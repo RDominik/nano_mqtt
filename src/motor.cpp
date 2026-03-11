@@ -1,5 +1,7 @@
 #include "motor.h"
 
+int motorSpeed = 200;
+
 void setup_motor() {
   // TB6612FNG Pins initialisieren
   pinMode(MOTOR_AIN1, OUTPUT);

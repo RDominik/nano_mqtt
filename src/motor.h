@@ -12,7 +12,7 @@ const int PWM_FREQ     = 20000;  // 20 kHz
 const int PWM_RES      = 8;     // 8 Bit → 0-255
 
 // Current motor speed (0-255)
-int motorSpeed = 200;
+extern int motorSpeed;
 
 void setup_motor();
 // motor control functions for TB6612FNG motor driver
