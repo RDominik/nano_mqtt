@@ -118,9 +118,15 @@ void deepSleep_handling() {
   // LEDs ausschalten
   digitalWrite(LED_BUILTIN, LOW);
 
-  // MQTT sauber trennen
+  // MQTT sauber trennen (Publish + Disconnect)
   mqtt.sleep("nano/esp32/status", "sleeping");
 
+  // MQTT-Task stoppen BEVOR WiFi getrennt wird (Race Condition vermeiden)
+  if (mqttTaskHandle != NULL) {
+    vTaskDelete(mqttTaskHandle);
+    mqttTaskHandle = NULL;
+    Serial.println("MQTT-Task gestoppt.");
+  }
 
   // WiFi off
   WiFi.disconnect(true);
