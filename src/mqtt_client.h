@@ -24,6 +24,6 @@ public:
 
 private:
     const char *mqtt_sub[2] = {"nano/esp32/engine", "nano/esp32/sleepms"};
-
+    char alive_counter[2] = {'0', '\0'};
 };
 
