@@ -1,3 +1,4 @@
+#include <WiFi.h>
 #include "mqtt_client.h"
 #include "motor.h"
 
@@ -5,23 +6,36 @@ void setSleepRequested(bool requested, uint64_t time_in_us = 0UL);
 void message_control(char* topic, char * msg); 
 
 SemaphoreHandle_t mqttMutex = NULL;
+SemaphoreHandle_t valueMutex = NULL;
 
 RTC_DATA_ATTR uint64_t sleepTimeUs = 0;  // sleep time in microseconds, retained across deep sleep
 volatile bool sleepRequested = false;  // flag to indicate sleep request
 
 void setup_mqtt() {
   mqttMutex = xSemaphoreCreateMutex();
-
+  valueMutex = xSemaphoreCreateMutex();
 }
 
 // ── MQTT Reconnect (ein Versuch) ──────────────────────────────
 void mqtt_controller::mqttReconnect() {
   const char *mqtt_sub[2] = {"nano/esp32/engine", "nano/esp32/sleepms"};
-  Serial.print("Versuche MQTT-Verbindung...");
+
+  // Diagnose: WiFi-Status prüfen
+  Serial.printf("WiFi Status: %d, IP: %s, RSSI: %d dBm\n",
+                WiFi.status(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("MQTT abgebrochen: WiFi nicht verbunden!");
+    return;
+  }
+
+  Serial.print("Versuche MQTT-Verbindung zu 192.168.188.97:1883...");
   if (this->connect("NanoESP32-Client")) {
     Serial.println("verbunden");
     bool sub1 = this->subscribe(mqtt_sub[0]);
     bool sub2 = this->subscribe(mqtt_sub[1]);
+    this->publish((String(mqtt_sub[0]) + "/status").c_str(), (sub1 ? "OK" : "FAIL"));
+    this->publish((String(mqtt_sub[1]) + "/status").c_str(), (sub2 ? "OK" : "FAIL"));
     Serial.printf("Subscribe %s: %s\n", mqtt_sub[0], sub1 ? "OK" : "FAIL");
     Serial.printf("Subscribe %s: %s\n", mqtt_sub[1], sub2 ? "OK" : "FAIL");
   } else {
@@ -31,8 +45,8 @@ void mqtt_controller::mqttReconnect() {
 }
 
 void mqtt_controller::mqttRun() {
-  char alive_counter[2] = {'0', '\0'};
-  unsigned long lastMsg = 0;
+
+  static unsigned long lastMsg = 0;
 
     if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       if (!this->connected()) {
@@ -44,13 +58,13 @@ void mqtt_controller::mqttRun() {
       // Publish alle 10 Sekunden
       if (this->connected() && millis() - lastMsg > 10000) {
         lastMsg = millis();
-        alive_counter[0]++;
-        if (alive_counter[0] > '9') {
-          alive_counter[0] = '0';
+        this->alive_counter[0]++;
+        if (this->alive_counter[0] > '9') {
+          this->alive_counter[0] = '0';
         }
         
-        this->publish("nano/esp32/alive_counter", alive_counter);
-        Serial.printf("alive counter: %s\n", alive_counter);
+        this->publish("nano/esp32/alive_counter", this->alive_counter);
+        Serial.printf("alive counter2: %s\n", this->alive_counter);
       }
       xSemaphoreGive(mqttMutex);
     }
@@ -87,9 +101,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
 void message_control(char* topic, char * msg) {
   // ── Deep Sleep via MQTT ──
-  if (strcmp(topic, "nano/esp32/sleepus") == 0) {
+  if (strcmp(topic, "nano/esp32/sleepms") == 0) {
     long ms = atol(msg);
+    Serial.printf("Nachricht empfangen [%lu]: ", ms);
     if (ms > 0) {
+      Serial.printf("Nachricht empfangen2 [%lu]: ", ms);
       setSleepRequested(true, (uint64_t)ms * 1000ULL);
     } else {
       setSleepRequested(false);
@@ -112,32 +128,34 @@ void message_control(char* topic, char * msg) {
 }
 
 void setSleepRequested(bool requested, uint64_t time_in_us) {
-  if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     sleepRequested = requested;
+    Serial.printf("request [%d]: \n", sleepRequested);
     if (requested) {
       sleepTimeUs = time_in_us;
+      Serial.printf("Nachricht empfangen3 [%llu]: \n", sleepTimeUs);
     } else {
       sleepTimeUs = 0;
     }
-    xSemaphoreGive(mqttMutex);
+    xSemaphoreGive(valueMutex);
   }
 }
 
 bool getSleepRequested() {
   bool requested = false;
-  if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     requested = sleepRequested;
     sleepRequested = false;  // reset flag after reading
-    xSemaphoreGive(mqttMutex);
+    xSemaphoreGive(valueMutex);
   }
   return requested;
 }
 
 uint64_t getSleepTimeUs() {
   uint64_t time = 0;
-  if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     time = sleepTimeUs;
-    xSemaphoreGive(mqttMutex);
+    xSemaphoreGive(valueMutex);
   }
   return time;
 }
