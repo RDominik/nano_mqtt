@@ -9,29 +9,29 @@ SemaphoreHandle_t mqttMutex = NULL;
 SemaphoreHandle_t valueMutex = NULL;
 
 RTC_DATA_ATTR uint64_t sleepTimeUs = 0;  // sleep time in microseconds, retained across deep sleep
-volatile bool sleepRequested = false;  // flag to indicate sleep request
+volatile bool sleepRequested = false;    // flag to indicate sleep request
 
 void setup_mqtt() {
   mqttMutex = xSemaphoreCreateMutex();
   valueMutex = xSemaphoreCreateMutex();
 }
 
-// ── MQTT Reconnect (ein Versuch) ──────────────────────────────
+// ── MQTT Reconnect (single attempt) ──────────────────────────
 void mqtt_controller::mqttReconnect() {
   const char *mqtt_sub[2] = {"nano/esp32/engine", "nano/esp32/sleepms"};
 
-  // Diagnose: WiFi-Status prüfen
+  // diagnostics: check WiFi status
   Serial.printf("WiFi Status: %d, IP: %s, RSSI: %d dBm\n",
                 WiFi.status(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("MQTT abgebrochen: WiFi nicht verbunden!");
+    Serial.println("MQTT aborted: WiFi not connected!");
     return;
   }
 
   Serial.print("Versuche MQTT-Verbindung zu 192.168.188.97:1883...");
   if (this->connect("NanoESP32-Client")) {
-    Serial.println("verbunden");
+    Serial.println("connected");
     bool sub1 = this->subscribe(mqtt_sub[0]);
     bool sub2 = this->subscribe(mqtt_sub[1]);
     this->publish((String(mqtt_sub[0]) + "/status").c_str(), (sub1 ? "OK" : "FAIL"));
@@ -39,7 +39,7 @@ void mqtt_controller::mqttReconnect() {
     Serial.printf("Subscribe %s: %s\n", mqtt_sub[0], sub1 ? "OK" : "FAIL");
     Serial.printf("Subscribe %s: %s\n", mqtt_sub[1], sub2 ? "OK" : "FAIL");
   } else {
-    Serial.print("fehlgeschlagen, RC=");
+    Serial.print("failed, RC=");
     Serial.println(this->state());
   }
 }
@@ -55,7 +55,7 @@ void mqtt_controller::mqttRun() {
       }
       this->loop();
       this->publish("nano/esp32/status", "online!");
-      // Publish alle 10 Sekunden
+      // publish every 10 seconds
       if (this->connected() && millis() - lastMsg > 10000) {
         lastMsg = millis();
         this->alive_counter[0]++;
@@ -75,7 +75,7 @@ void mqtt_controller::mqttRun() {
 void mqtt_controller::sleep(const char* topic, const char* message) {
   if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
     PubSubClient::publish(topic, message);
-    delay(100);  // Publish abschicken lassen
+    delay(100);  // allow publish to be sent
     PubSubClient::disconnect();
     xSemaphoreGive(mqttMutex);
   } 
@@ -89,7 +89,7 @@ void mqtt_controller::disconnect() {
 }
 // ── MQTT Callback (Subscribe) ──────────────────────────────────
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.printf("Nachricht empfangen [%s]: ", topic);
+  Serial.printf("Message received [%s]: ", topic);
   // Payload to string
   char msg[length + 1];
   memcpy(msg, payload, length);
@@ -103,9 +103,9 @@ void message_control(char* topic, char * msg) {
   // ── Deep Sleep via MQTT ──
   if (strcmp(topic, "nano/esp32/sleepms") == 0) {
     long ms = atol(msg);
-    Serial.printf("Nachricht empfangen [%lu]: ", ms);
+    Serial.printf("Message received [%lu]: ", ms);
     if (ms > 0) {
-      Serial.printf("Nachricht empfangen2 [%lu]: ", ms);
+      Serial.printf("Sleep requested [%lu ms]: ", ms);
       setSleepRequested(true, (uint64_t)ms * 1000ULL);
     } else {
       setSleepRequested(false);
@@ -133,7 +133,7 @@ void setSleepRequested(bool requested, uint64_t time_in_us) {
     Serial.printf("request [%d]: \n", sleepRequested);
     if (requested) {
       sleepTimeUs = time_in_us;
-      Serial.printf("Nachricht empfangen3 [%llu]: \n", sleepTimeUs);
+      Serial.printf("Sleep time set [%llu us]: \n", sleepTimeUs);
     } else {
       sleepTimeUs = 0;
     }

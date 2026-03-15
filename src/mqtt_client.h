@@ -1,6 +1,7 @@
+#ifndef MQTT_CLIENT_H
+#define MQTT_CLIENT_H
+
 #include <PubSubClient.h>
-
-
 
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 bool getSleepRequested();
@@ -12,9 +13,9 @@ public:
     mqtt_controller(Client& client) : PubSubClient(client) {
         setServer("192.168.188.97", 1883);
         setCallback(mqttCallback);
-        // Hier können Sie zusätzliche Initialisierungen vornehmen, z.B.:
-        // - Standard-Callback setzen
-        // - Verbindungsinformationen speichern
+        // additional initialization can be done here, e.g.:
+        // - set default callback
+        // - store connection info
     };
     void disconnect();
     void mqttRun();
@@ -27,3 +28,4 @@ private:
     char alive_counter[2] = {'0', '\0'};
 };
 
+#endif // MQTT_CLIENT_H
