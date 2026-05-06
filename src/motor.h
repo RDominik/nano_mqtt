@@ -4,13 +4,28 @@
 #include <Arduino.h>
 #include "mqtt_client.h"
 
-// ── TB6612FNG Motor Driver Pins ────────────────────────────────
-const int MOTOR_AIN1 = D2;   // direction 1
-const int MOTOR_AIN2 = D3;   // direction 2
-const int MOTOR_PWMA = D5;   // PWM speed
-const int MOTOR_STBY = D4;   // Standby (HIGH = active)
+/**
+ * @brief Motor commands that can be queued from other execution contexts.
+ * @details
+ * The command queue is consumed in the main loop context by run_motor().
+ */
+enum MotorCommand : uint8_t {
+	MOTOR_CMD_NONE = 0,
+	MOTOR_CMD_FORWARD,
+	MOTOR_CMD_BACKWARD,
+	MOTOR_CMD_STOP,
+	MOTOR_CMD_STANDBY
+};
 
-const int BUTTON_PIN  = D6;   // Arduino pin D6 = GPIO9 (RTC-capable)
+// ── TB6612FNG Motor Driver Pins ────────────────────────────────
+const int MOTOR_AIN1 = D8;   // direction 1
+const int MOTOR_AIN2 = D9;   // direction 2
+const int MOTOR_PWMA = D10;   // PWM speed
+const int MOTOR_STBY = D7;   // Standby (HIGH = active)
+
+const int BUTTON_PIN  = D1;   // Button pin (active LOW)
+const int REED1_PIN   = D2;   // Reed switch pin (active LOW)
+const int REED2_PIN   = D3;   // Reed switch pin (active LOW)
 // PWM configuration (ESP32 LEDC)
 const int PWM_CHANNEL  = 0;
 const int PWM_FREQ     = 20000;  // 20 kHz
@@ -19,12 +34,46 @@ const int PWM_RES      = 8;     // 8 Bit → 0-255
 // Current motor speed (0-255)
 extern int motorSpeed;
 
+/**
+ * @brief Initialize the TB6612FNG driver and PWM output.
+ * @details
+ * Configures LEDC PWM and sets the motor driver to standby as a safe default.
+ */
 void setup_motor();
-// motor control functions for TB6612FNG motor driver
+/**
+ * @brief Drive the motor in forward direction.
+ * @param[in] speed PWM duty cycle in the range 0..255.
+ */
 void motorForward(int speed);
+/**
+ * @brief Drive the motor in backward direction.
+ * @param[in] speed PWM duty cycle in the range 0..255.
+ */
 void motorBackward(int speed);
+/**
+ * @brief Stop the motor.
+ * @details
+ * Disables both direction inputs and sets PWM duty to 0.
+ */
 void motorStop();
+/**
+ * @brief Put motor driver into standby mode.
+ * @details
+ * Standby mode lowers power consumption when no motion is needed.
+ */
 void motorStandby();
-void run_motor(mqtt_controller mqtt);
+/**
+ * @brief Queue a motor command for deferred processing.
+ * @param[in] command Motor command to store in the single-slot queue.
+ */
+void request_motor_command(MotorCommand command);
+/**
+ * @brief Run motor control state machine and publish state transitions.
+ * @param[in,out] mqtt MQTT controller used for status publishes.
+ * @details
+ * Applies queued commands, evaluates button/reed input logic, updates motor
+ * outputs, and publishes state changes only on transitions.
+ */
+void run_motor(mqtt_controller& mqtt);
 
 #endif // MOTOR_H

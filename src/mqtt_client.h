@@ -3,28 +3,74 @@
 
 #include <PubSubClient.h>
 
+/**
+ * @brief Handle incoming MQTT messages from subscribed topics.
+ * @param[in] topic Zero-terminated topic string.
+ * @param[in] payload Pointer to raw payload bytes.
+ * @param[in] length Number of payload bytes.
+ */
 void mqttCallback(char* topic, byte* payload, unsigned int length);
-bool getSleepRequested();
-uint64_t getSleepTimeUs();
+/**
+ * @brief Read and clear the pending deep-sleep request flag.
+ * @retval true A sleep request was pending.
+ * @retval false No sleep request was pending.
+ */
+bool get_sleepRequested();
+/**
+ * @brief Get configured deep-sleep duration in microseconds.
+ * @return Sleep duration in microseconds.
+ */
+uint64_t get_sleepTimeUs();
+/**
+ * @brief Initialize MQTT synchronization primitives and shared state.
+ */
 void setup_mqtt();
 
+/**
+ * @brief Thread-safe wrapper around PubSubClient used by this firmware.
+ */
 class mqtt_controller : public PubSubClient {
 public:
+    /**
+     * @brief Construct the MQTT controller wrapper.
+     * @param[in,out] client Underlying network client used by PubSubClient.
+     */
     mqtt_controller(Client& client) : PubSubClient(client) {
         setServer("192.168.188.97", 1883);
         setCallback(mqttCallback);
-        // additional initialization can be done here, e.g.:
-        // - set default callback
-        // - store connection info
     };
+    /**
+     * @brief Publish under mutex protection.
+     * @param[in] topic Topic name.
+     * @param[in] payload Message payload.
+     * @retval true Publish accepted by PubSubClient.
+     * @retval false Publish not sent (mutex timeout or disconnected state).
+     */
+    bool publishSafe(const char* topic, const char* payload);
+    /**
+     * @brief Disconnect MQTT client under mutex protection.
+     */
     void disconnect();
+    /**
+     * @brief Execute one MQTT processing cycle.
+     * @details
+     * Performs reconnect attempt if needed, then runs client loop and
+     * periodic alive publications.
+     */
     void mqttRun();
+    /**
+     * @brief Attempt one MQTT reconnect cycle.
+     */
     void mqttReconnect();
+    /**
+     * @brief Publish sleep status and disconnect cleanly.
+     * @param[in] topic Topic name.
+     * @param[in] message Payload.
+     */
     void sleep(const char* topic, const char* message);
 
 
 private:
-    const char *mqtt_sub[2] = {"nano/esp32/engine", "nano/esp32/sleepms"};
     char alive_counter[2] = {'0', '\0'};
 };
 

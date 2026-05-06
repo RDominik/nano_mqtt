@@ -8,12 +8,17 @@
 #include "mqtt_client.h"
 #include "battery.h"
 
+/**
+ * @file main.cpp
+ * @brief Firmware entry point: setup, main loop, Wi-Fi/MQTT task orchestration, OTA, and deep sleep.
+ */
+
 WiFiClient   wifiClient;
 mqtt_controller mqtt(wifiClient);
 
 // ── Button ─────────────────────────────────────────────────────
 
-const int BUTTON_GPIO = 9;    // raw GPIO number for wake-up mask
+const int BUTTON_GPIO = 3;    // raw GPIO number for wake-up mask
 
 String wakeup_reason = "";
 
@@ -21,14 +26,39 @@ String wakeup_reason = "";
 TaskHandle_t mqttTaskHandle = NULL;
 
 // function prototypes
+/**
+ * @brief Prepare and enter deep sleep mode.
+ */
 void deepSleep_handling();
+/**
+ * @brief Configure OTA handlers and start OTA service.
+ */
 void setup_ota();
+/**
+ * @brief Run one-time startup publishes after MQTT connection is available.
+ */
 void startup_task();
+/**
+ * @brief Dedicated MQTT FreeRTOS task.
+ * @param[in] parameter Unused task parameter.
+ */
 void mqttTask(void* parameter);
-void connectWiFi();
+/**
+ * @brief Trigger non-blocking Wi-Fi connect attempts.
+ * @param[in] force When true, skip retry interval throttling.
+ */
+void connectWiFi(bool force = false);
+/**
+ * @brief Configure GPIO directions and pull-ups.
+ */
 void setup_pins();
 
+const unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
+
 // ── Setup ──────────────────────────────────────────────────────
+/**
+ * @brief Arduino setup routine.
+ */
 void setup() {
   Serial.begin(115200);
 
@@ -38,19 +68,19 @@ void setup() {
   setup_battery();
 
   // connect WiFi
-  connectWiFi();
+  WiFi.mode(WIFI_STA);
+  connectWiFi(true);
 
   setup_ota();
 
-  // start MQTT task on Core 0 (loop() runs on Core 1)
-  xTaskCreatePinnedToCore(
+  // start MQTT task (ESP32-C3 is single-core)
+  xTaskCreate(
     mqttTask,         // task function
     "MQTT_Task",      // name
-    4096,             // stack size (bytes)
+    8192,             // stack size (bytes) - increased for MQTT
     NULL,             // parameter
     1,                // priority
-    &mqttTaskHandle,  // task handle
-    0                 // Core 0
+    &mqttTaskHandle   // task handle
   );
 
   // display wakeup reason
@@ -69,10 +99,10 @@ void setup() {
 }
 
 void setup_pins() {
-  pinMode(LED_BUILTIN, OUTPUT);
+  // pinMode(LED_BUILTIN, OUTPUT);
   // button with internal pull-up, active LOW
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-
+  pinMode(REED1_PIN, INPUT_PULLUP);
   // initialize TB6612FNG pins
   pinMode(MOTOR_AIN1, OUTPUT);
   pinMode(MOTOR_AIN2, OUTPUT);
@@ -81,24 +111,49 @@ void setup_pins() {
 }
 
 // ── Loop (Core 1) ─────────────────────────────────────────────
+/**
+ * @brief Arduino loop routine.
+ * @details
+ * Keeps OTA, motor logic, battery telemetry, sleep handling, and Wi-Fi reconnect
+ * responsive by avoiding long blocking waits.
+ */
 void loop() {
+  static wl_status_t lastWiFiStatus = WL_DISCONNECTED;
+
+  // Keep loop responsive: OTA, motor control, telemetry, and sleep checks.
   ArduinoOTA.handle();
   startup_task();
   run_motor(mqtt);
   // blink LED
   static unsigned long lastMillis = 0;
-  if (millis() - lastMillis > 200) {
+  if (millis() - lastMillis > 2000) {
     lastMillis = millis();
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    run_battery(mqtt);
+  
+  //   lastMillis = millis();
+  //   Serial.print("REED1_PIN: ");
+  //   Serial.println(digitalRead(REED1_PIN));
+    // digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
 
   // execute deep sleep (in loop so MQTT callback returns cleanly)
-  if (getSleepRequested()) {
+  if (get_sleepRequested()) {
     deepSleep_handling();
   }
 
-  // WiFi Reconnect
-  if (WiFi.status() != WL_CONNECTED) {
+  // WiFi reconnect without blocking the loop.
+  wl_status_t wifiStatus = WiFi.status();
+  if (wifiStatus != lastWiFiStatus) {
+    if (wifiStatus == WL_CONNECTED) {
+      Serial.println("WiFi connected!");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("WiFi disconnected.");
+    }
+    lastWiFiStatus = wifiStatus;
+  }
+
+  if (wifiStatus != WL_CONNECTED) {
     connectWiFi();
   }
 
@@ -106,6 +161,10 @@ void loop() {
 }
 
 // ── MQTT FreeRTOS-Task (runs on Core 0) ─────────────────────
+/**
+ * @brief MQTT background task.
+ * @param[in] parameter Unused task argument provided by FreeRTOS.
+ */
 void mqttTask(void* parameter) {
   // wait until WiFi is connected
   while (WiFi.status() != WL_CONNECTED) {
@@ -123,24 +182,31 @@ void mqttTask(void* parameter) {
 }
 
 // ── WiFi connect ─────────────────────────────────────────────
-void connectWiFi() {
-  Serial.print("Connecting WiFi...");
-  WiFi.begin(ssid, password);
-
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-    delay(500);
-    Serial.print(".");
-  }
+/**
+ * @brief Schedule or force a Wi-Fi connect attempt.
+ * @param[in] force When true, start a connection attempt immediately.
+ */
+void connectWiFi(bool force) {
+  static unsigned long lastAttempt = 0;
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(" connected!");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println(" WiFi timeout!");
+    return;
   }
+
+  // Retry is throttled to avoid long blocking reconnect loops.
+  unsigned long now = millis();
+  if (!force && (now - lastAttempt) < WIFI_RETRY_INTERVAL_MS) {
+    return;
+  }
+
+  lastAttempt = now;
+  Serial.print("Connecting WiFi...");
+  WiFi.begin(ssid, password);
 }
 
+/**
+ * @brief Stop runtime services and enter deep sleep with timer and button wake-up.
+ */
 void deepSleep_handling() {
 
   // stop motor before sleeping (avoid blocking sleep with running motor) --- IGNORE ---s
@@ -148,7 +214,7 @@ void deepSleep_handling() {
   motorStandby();
 
   // turn off LEDs
-  digitalWrite(LED_BUILTIN, LOW);
+  // digitalWrite(LED_BUILTIN, LOW);
 
   // cleanly disconnect MQTT (publish + disconnect)
   mqtt.sleep("nano/esp32/status", "sleeping");
@@ -167,10 +233,10 @@ void deepSleep_handling() {
   Serial.flush();
 
   // Timer Wake-Up
-  esp_sleep_enable_timer_wakeup(getSleepTimeUs());
+  esp_sleep_enable_timer_wakeup(get_sleepTimeUs());
 
   // button wake-up (GPIO LOW = pressed), for ESP32-C3
-  // esp_deep_sleep_enable_gpio_wakeup(BIT(BUTTON_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_enable_gpio_wakeup(BIT(BUTTON_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);
 
   Serial.println("Deep sleep with timer + button wake-up...");
   Serial.flush();
@@ -179,6 +245,9 @@ void deepSleep_handling() {
   // ← never reached, ESP32 restarts after sleep
 }
 
+/**
+ * @brief Configure OTA callbacks and start OTA listener.
+ */
 void setup_ota() {
   // initialize OTA
   ArduinoOTA.setHostname("NanoESP32");
@@ -205,13 +274,16 @@ void setup_ota() {
   ArduinoOTA.begin();
 }
 
+/**
+ * @brief Publish startup-only telemetry once MQTT becomes connected.
+ */
 void startup_task() {
   static boolean initialized = false;
-  if (!initialized) {
+  if (!initialized && mqtt.connected()) {
     initialized = true;
     run_battery(mqtt);
     publish_batteryStatus(mqtt);
-    mqtt.publish("nano/esp32/engine/wakeup_reason", wakeup_reason.c_str());
+    mqtt.publishSafe("nano/esp32/sleepms/wakeup_reason", wakeup_reason.c_str());
   }
 
 }
