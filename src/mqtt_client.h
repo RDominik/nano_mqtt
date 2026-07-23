@@ -17,10 +17,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
  */
 bool get_sleepRequested();
 /**
- * @brief Get configured deep-sleep duration in microseconds.
- * @return Sleep duration in microseconds.
+ * @brief Get configured deep-sleep duration in milliseconds.
+ * @return Sleep duration in milliseconds.
  */
-uint64_t get_sleepTimeUs();
+uint64_t get_sleepTimeMs();
 /**
  * @brief Initialize MQTT synchronization primitives and shared state.
  */

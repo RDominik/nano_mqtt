@@ -232,8 +232,8 @@ void deepSleep_handling() {
   btStop();
   Serial.flush();
 
-  // Timer Wake-Up
-  esp_sleep_enable_timer_wakeup(get_sleepTimeUs());
+  // Timer Wake-Up API expects microseconds; stored value is milliseconds.
+  esp_sleep_enable_timer_wakeup(get_sleepTimeMs() * 1000ULL);
 
   // button wake-up (GPIO LOW = pressed), for ESP32-C3
   esp_deep_sleep_enable_gpio_wakeup(BIT(BUTTON_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);

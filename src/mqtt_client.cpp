@@ -10,9 +10,9 @@
 /**
  * @brief Store deep-sleep request state and optional sleep duration.
  * @param[in] requested True to request deep sleep, false to clear request.
- * @param[in] time_in_us Sleep duration in microseconds.
+ * @param[in] time_in_ms Sleep duration in milliseconds.
  */
-void set_sleepRequested(bool requested, uint64_t time_in_us = 0UL);
+void set_sleepRequested(bool requested, uint64_t time_in_ms = 0UL);
 /**
  * @brief Dispatch one decoded MQTT message to local handlers.
  * @param[in] topic MQTT topic.
@@ -23,13 +23,14 @@ void message_control(char* topic, char * msg);
 static constexpr size_t MQTT_MSG_BUFFER_SIZE = 128;
 static constexpr const char* MQTT_TOPIC_ENGINE = "nano/esp32/engine";
 static constexpr const char* MQTT_TOPIC_SLEEPMS = "nano/esp32/sleepms";
+static constexpr const char* MQTT_TOPIC_IP = "nano/esp32/ip";
 static constexpr const char* MQTT_TOPIC_ENGINE_STATUS = "nano/esp32/engine/status";
 static constexpr const char* MQTT_TOPIC_SLEEPMS_STATUS = "nano/esp32/sleepms/status";
 
 SemaphoreHandle_t mqttMutex = NULL;
 SemaphoreHandle_t valueMutex = NULL;
 
-RTC_DATA_ATTR uint64_t sleepTimeUs = 0;  // sleep time in microseconds, retained across deep sleep
+RTC_DATA_ATTR uint64_t sleepTimeMs = 0;  // sleep time in milliseconds, retained across deep sleep
 volatile bool sleepRequested = false;    // flag to indicate sleep request
 
 /**
@@ -58,10 +59,13 @@ void mqtt_controller::mqttReconnect() {
   Serial.print("Versuche MQTT-Verbindung zu 192.168.188.97:1883...");
   if (this->connect("NanoESP32-Client")) {
     Serial.println("connected");
+    String ip = WiFi.localIP().toString();
     bool sub1 = this->subscribe(MQTT_TOPIC_ENGINE);
     bool sub2 = this->subscribe(MQTT_TOPIC_SLEEPMS);
+    this->publish(MQTT_TOPIC_IP, ip.c_str());
     this->publish(MQTT_TOPIC_ENGINE_STATUS, (sub1 ? "OK" : "FAIL"));
     this->publish(MQTT_TOPIC_SLEEPMS_STATUS, (sub2 ? "OK" : "FAIL"));
+    Serial.printf("Publish %s: %s\n", MQTT_TOPIC_IP, ip.c_str());
     Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_ENGINE, sub1 ? "OK" : "FAIL");
     Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_SLEEPMS, sub2 ? "OK" : "FAIL");
   } else {
@@ -169,9 +173,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void message_control(char* topic, char * msg) {
   // ── Deep Sleep via MQTT ──
   if (strcmp(topic, MQTT_TOPIC_SLEEPMS) == 0) {
+    // Convert decimal payload text (milliseconds) to long integer; parsing stops at first non-digit.
     long ms = atol(msg);
     if (ms > 0) {
-      set_sleepRequested(true, (uint64_t)ms * 1000ULL);
+      set_sleepRequested(true, (uint64_t)ms);
     } else {
       set_sleepRequested(false);
     }
@@ -196,12 +201,12 @@ void message_control(char* topic, char * msg) {
 /**
  * @brief Update shared sleep-request values.
  * @param[in] requested New sleep-request flag.
- * @param[in] time_in_us Sleep duration in microseconds.
+ * @param[in] time_in_ms Sleep duration in milliseconds.
  */
-void set_sleepRequested(bool requested, uint64_t time_in_us) {
+void set_sleepRequested(bool requested, uint64_t time_in_ms) {
   if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     sleepRequested = requested;
-    sleepTimeUs = time_in_us;
+    sleepTimeMs = time_in_ms;
     xSemaphoreGive(valueMutex);
   }
 }
@@ -222,13 +227,13 @@ bool get_sleepRequested() {
 }
 
 /**
- * @brief Read configured sleep time in microseconds.
- * @return Sleep duration in microseconds.
+ * @brief Read configured sleep time in milliseconds.
+ * @return Sleep duration in milliseconds.
  */
-uint64_t get_sleepTimeUs() {
+uint64_t get_sleepTimeMs() {
   uint64_t time = 0;
   if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    time = sleepTimeUs;
+    time = sleepTimeMs;
     xSemaphoreGive(valueMutex);
   }
   return time;
