@@ -136,6 +136,30 @@ The active PlatformIO environment is defined in [platformio.ini](platformio.ini)
 
 - `seeed_xiao_esp32c3`
 
+## MQTT Topics
+
+### Subscribed Topics (incoming commands)
+
+| Topic | Payload | Effect |
+| --- | --- | --- |
+| `nano/esp32/engine` | `forward`, `backward`, `standby`, other -> `stop` | Controls motor command queue |
+| `nano/esp32/sleepms` | positive integer (milliseconds) | Requests deep sleep for given duration |
+
+### Published Topics (outgoing status/telemetry)
+
+| Topic | Payload | Meaning |
+| --- | --- | --- |
+| `nano/esp32/engine/status` | `OK` / `FAIL` | Result of subscribing to `nano/esp32/engine` during reconnect |
+| `nano/esp32/sleepms/status` | `OK` / `FAIL` | Result of subscribing to `nano/esp32/sleepms` during reconnect |
+| `nano/esp32/status` | `online!`, `sleeping` | Device online heartbeat and pre-sleep state |
+| `nano/esp32/alive_counter` | `0`..`9` (cycling) | Heartbeat counter every 10 seconds |
+| `nano/esp32/sleepms/wakeup_reason` | `NORMAL_START`, `ESP_SLEEP_WAKEUP_TIMER`, `ESP_SLEEP_WAKEUP_GPIO` | Wake-up reason after boot |
+| `nano/esp32/engine/set` | `forward`, `backward`, `stop`, `standby` | Published motor state transitions |
+| `nano/esp32/battery/monitor` | `activated` / `deactivated` | Battery monitor availability |
+| `nano/esp32/battery/voltage` | float string (for example `3.92`) | Battery voltage in volts |
+| `nano/esp32/battery/percent` | float string (for example `76.4`) | Battery state of charge in percent |
+| `nano/esp32/battery/rate` | float string (for example `-0.35`) | Charge/discharge rate in percent per hour |
+
 ## Common Issues
 
 - `pio: command not found`:
