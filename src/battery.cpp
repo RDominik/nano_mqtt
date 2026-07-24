@@ -36,6 +36,7 @@ static const unsigned long BATTERY_PUBLISH_INTERVAL_MS = 30000;
 static const float BATTERY_VOLTAGE_DELTA = 0.02f;
 static const float BATTERY_PERCENT_DELTA = 0.5f;
 static const float BATTERY_RATE_DELTA = 0.10f;
+static const float BATTERY_CHARGING_THRESHOLD = 0.05f;
 
 /**
  * @brief Initialize I2C bus and probe MAX17048 monitor.
@@ -93,6 +94,15 @@ float getBatteryChargeRate() {
 }
 
 /**
+ * @brief Determine whether the battery is currently charging.
+ * @return True when charge rate is above the charging threshold.
+ */
+bool getBatteryCharging() {
+  if (!batteryOk) return false;
+  return getBatteryChargeRate() > BATTERY_CHARGING_THRESHOLD;
+}
+
+/**
  * @brief Print current battery values to serial output.
  * @param[in,out] mqtt Unused parameter kept for API compatibility.
  */
@@ -118,18 +128,21 @@ void run_battery(mqtt_controller& mqtt) {
   static float lastVoltage = 0.0f;
   static float lastPercent = 0.0f;
   static float lastRate = 0.0f;
+  static bool lastCharging = false;
 
   unsigned long now = millis();
   float voltage = getBatteryVoltage();
   float percent = getBatteryPercent();
   float rate    = getBatteryChargeRate();
+  bool charging = getBatteryCharging();
 
   if (voltage >= 0) {
     // Emit telemetry on relevant value changes or periodic heartbeat timeout.
     bool valueChanged = !haveLastValues ||
       (fabsf(voltage - lastVoltage) >= BATTERY_VOLTAGE_DELTA) ||
       (fabsf(percent - lastPercent) >= BATTERY_PERCENT_DELTA) ||
-      (fabsf(rate - lastRate) >= BATTERY_RATE_DELTA);
+      (fabsf(rate - lastRate) >= BATTERY_RATE_DELTA) ||
+      (charging != lastCharging);
 
     bool intervalReached = !haveLastValues || ((now - lastBatMsg) >= BATTERY_PUBLISH_INTERVAL_MS);
     if (!valueChanged && !intervalReached) {
@@ -143,12 +156,14 @@ void run_battery(mqtt_controller& mqtt) {
     mqtt.publishSafe("nano/esp32/battery/percent", buf);
     snprintf(buf, sizeof(buf), "%.2f", rate);
     mqtt.publishSafe("nano/esp32/battery/rate", buf);
+    mqtt.publishSafe("nano/esp32/battery/charging", charging ? "charging" : "not_charging");
     Serial.printf("Battery: %.2f V, %.1f %%, Rate: %.2f %%/h\n", voltage, percent, rate);
 
     lastBatMsg = now;
     lastVoltage = voltage;
     lastPercent = percent;
     lastRate = rate;
+    lastCharging = charging;
     haveLastValues = true;
   }
 }

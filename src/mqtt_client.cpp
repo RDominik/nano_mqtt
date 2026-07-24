@@ -227,7 +227,7 @@ bool get_sleepRequested() {
 }
 
 /**
- * @brief Read configured sleep time in milliseconds.
+ * @brief Read and clear configured sleep time in milliseconds.
  * @return Sleep duration in milliseconds.
  */
 uint64_t get_sleepTimeMs() {
