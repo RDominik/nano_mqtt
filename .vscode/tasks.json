@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PlatformIO: Build",
+      "type": "shell",
+      "command": "platformio",
+      "args": ["run"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "PlatformIO: Upload OTA",
+      "type": "shell",
+      "command": "platformio",
+      "args": ["run", "-e", "ota", "-t", "upload"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "PlatformIO: Upload USB",
+      "type": "shell",
+      "command": "platformio",
+      "args": ["run", "-e", "usb", "-t", "upload"],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
