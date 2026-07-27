@@ -182,9 +182,11 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 | --- | --- | --- |
 | `nano/esp32/engine/status` | `OK` / `FAIL` | Result of subscribing to `nano/esp32/engine` during reconnect |
 | `nano/esp32/sleepms/status` | `OK` / `FAIL` | Result of subscribing to `nano/esp32/sleepms` during reconnect |
-| `nano/esp32/status` | `online!`, `sleeping` | Device online heartbeat and pre-sleep state |
-| `nano/esp32/alive_counter` | `0`..`9` (cycling) | Heartbeat counter every 10 seconds |
+| `nano/esp32/status` | `online!`, `sleeping`, `offline` | Device state. `offline` is sent by MQTT Last Will if connection drops unexpectedly |
+| `nano/esp32/alive_counter` | `0`..`9` (cycling) | Heartbeat counter every second |
 | `nano/esp32/sleepms/wakeup_reason` | `NORMAL_START`, `ESP_SLEEP_WAKEUP_TIMER`, `ESP_SLEEP_WAKEUP_GPIO` | Wake-up reason after boot |
+| `nano/esp32/reset_reason` | reset reason enum text (for example `ESP_RST_BROWNOUT`) | Reset cause from ESP-IDF at boot |
+| `nano/esp32/boot_count` | incrementing integer string | Boot counter retained in RTC memory |
 | `nano/esp32/engine/set` | `forward`, `backward`, `stop`, `standby` | Published motor state transitions |
 | `nano/esp32/battery/monitor` | `activated` / `deactivated` | Battery monitor availability |
 | `nano/esp32/battery/voltage` | float string (for example `3.92`) | Battery voltage in volts |
@@ -193,6 +195,7 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 | `nano/esp32/battery/charging` | `charging` / `not_charging` | Derived from the MAX17048 charge rate and published when the charging state changes |
 
 The `nano/esp32/battery/charging` topic is derived from the MAX17048 charge rate. It does not come from a dedicated charger pin, so it reflects the fuel gauge estimate rather than a physical charge-detect signal.
+The `nano/esp32/status` topic is published as retained and also configured as MQTT Last Will, so the broker can switch it to `offline` if power is lost abruptly.
 
 ## Common Issues
 
