@@ -245,7 +245,7 @@ bool get_sleepRequested() {
 }
 
 /**
- * @brief Read and clear configured sleep time in milliseconds.
+ * @brief Read configured sleep time in milliseconds.
  * @return Sleep duration in milliseconds.
  */
 uint64_t get_sleepTimeMs() {
@@ -255,4 +255,14 @@ uint64_t get_sleepTimeMs() {
     xSemaphoreGive(valueMutex);
   }
   return time;
+}
+
+/**
+ * @brief Reset configured sleep duration to zero.
+ */
+void reset_sleepTimeMs() {
+  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    sleepTimeMs = 0;
+    xSemaphoreGive(valueMutex);
+  }
 }

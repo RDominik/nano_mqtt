@@ -22,6 +22,10 @@ bool get_sleepRequested();
  */
 uint64_t get_sleepTimeMs();
 /**
+ * @brief Reset configured deep-sleep duration to zero.
+ */
+void reset_sleepTimeMs();
+/**
  * @brief Initialize MQTT synchronization primitives and shared state.
  */
 void setup_mqtt();
