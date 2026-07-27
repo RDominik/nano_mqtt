@@ -3,6 +3,7 @@
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #include "secrets.h"  // ssid, password, mqtt_server, ota_password
 #include "motor.h"
 #include "mqtt_client.h"
@@ -21,6 +22,8 @@ mqtt_controller mqtt(wifiClient);
 const int BUTTON_GPIO = 3;    // raw GPIO number for wake-up mask
 
 String wakeup_reason = "";
+String reset_reason = "";
+RTC_DATA_ATTR uint32_t boot_counter = 0;
 
 // Task-Handle
 TaskHandle_t mqttTaskHandle = NULL;
@@ -52,6 +55,12 @@ void connectWiFi(bool force = false);
  * @brief Configure GPIO directions and pull-ups.
  */
 void setup_pins();
+/**
+ * @brief Convert reset reason enum to readable text.
+ * @param[in] reason Raw reset reason from ESP-IDF.
+ * @return Human-readable reset reason.
+ */
+const char* resetReasonToString(esp_reset_reason_t reason);
 
 const unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
 
@@ -95,6 +104,25 @@ void setup() {
     default:
       wakeup_reason = "NORMAL_START";
       break;
+  }
+
+  boot_counter++;
+  reset_reason = resetReasonToString(esp_reset_reason());
+}
+
+const char* resetReasonToString(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:   return "ESP_RST_POWERON";
+    case ESP_RST_EXT:       return "ESP_RST_EXT";
+    case ESP_RST_SW:        return "ESP_RST_SW";
+    case ESP_RST_PANIC:     return "ESP_RST_PANIC";
+    case ESP_RST_INT_WDT:   return "ESP_RST_INT_WDT";
+    case ESP_RST_TASK_WDT:  return "ESP_RST_TASK_WDT";
+    case ESP_RST_WDT:       return "ESP_RST_WDT";
+    case ESP_RST_DEEPSLEEP: return "ESP_RST_DEEPSLEEP";
+    case ESP_RST_BROWNOUT:  return "ESP_RST_BROWNOUT";
+    case ESP_RST_SDIO:      return "ESP_RST_SDIO";
+    default:                return "ESP_RST_UNKNOWN";
   }
 }
 
@@ -285,6 +313,10 @@ void startup_task() {
     initialized = true;
     run_battery(mqtt);
     publish_batteryStatus(mqtt);
+    char bootCounterBuf[16];
+    snprintf(bootCounterBuf, sizeof(bootCounterBuf), "%lu", (unsigned long)boot_counter);
+    mqtt.publishSafe("nano/esp32/boot_count", bootCounterBuf, true);
+    mqtt.publishSafe("nano/esp32/reset_reason", reset_reason.c_str(), true);
     mqtt.publishSafe("nano/esp32/sleepms/wakeup_reason", wakeup_reason.c_str());
   }
 

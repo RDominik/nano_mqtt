@@ -26,6 +26,18 @@ static constexpr const char* MQTT_TOPIC_SLEEPMS = "nano/esp32/sleepms";
 static constexpr const char* MQTT_TOPIC_IP = "nano/esp32/ip";
 static constexpr const char* MQTT_TOPIC_ENGINE_STATUS = "nano/esp32/engine/status";
 static constexpr const char* MQTT_TOPIC_SLEEPMS_STATUS = "nano/esp32/sleepms/status";
+static constexpr const char* MQTT_TOPIC_STATUS = "nano/esp32/status";
+
+/**
+ * @brief Build a stable, device-unique MQTT client ID.
+ * @param[out] out Buffer for zero-terminated client id.
+ * @param[in] outSize Size of output buffer.
+ */
+static void buildMqttClientId(char* out, size_t outSize) {
+  uint64_t chipId = ESP.getEfuseMac();
+  snprintf(out, outSize, "NanoESP32-%04X%08X",
+           (uint16_t)(chipId >> 32), (uint32_t)chipId);
+}
 
 SemaphoreHandle_t mqttMutex = NULL;
 SemaphoreHandle_t valueMutex = NULL;
@@ -57,15 +69,21 @@ void mqtt_controller::mqttReconnect() {
   }
 
   Serial.print("Versuche MQTT-Verbindung zu 192.168.188.97:1883...");
-  if (this->connect("NanoESP32-Client")) {
+  char mqttClientId[32];
+  buildMqttClientId(mqttClientId, sizeof(mqttClientId));
+
+  if (this->connect(mqttClientId, MQTT_TOPIC_STATUS, 1, true, "offline")) {
     Serial.println("connected");
+    Serial.printf("MQTT Client ID: %s\n", mqttClientId);
     String ip = WiFi.localIP().toString();
     bool sub1 = this->subscribe(MQTT_TOPIC_ENGINE);
     bool sub2 = this->subscribe(MQTT_TOPIC_SLEEPMS);
     this->publish(MQTT_TOPIC_IP, ip.c_str());
+    this->publish(MQTT_TOPIC_STATUS, "online!", true);
     this->publish(MQTT_TOPIC_ENGINE_STATUS, (sub1 ? "OK" : "FAIL"));
     this->publish(MQTT_TOPIC_SLEEPMS_STATUS, (sub2 ? "OK" : "FAIL"));
     Serial.printf("Publish %s: %s\n", MQTT_TOPIC_IP, ip.c_str());
+    Serial.printf("Publish %s: %s\n", MQTT_TOPIC_STATUS, "online!");
     Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_ENGINE, sub1 ? "OK" : "FAIL");
     Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_SLEEPMS, sub2 ? "OK" : "FAIL");
   } else {
@@ -88,14 +106,14 @@ void mqtt_controller::mqttRun() {
       }
       this->loop();
 
-      // publish every 10 seconds
-      if (this->connected() && millis() - lastMsg > 10000) {
+      // publish every second
+      if (this->connected() && millis() - lastMsg > 1000) {
         lastMsg = millis();
         this->alive_counter[0]++;
         if (this->alive_counter[0] > '9') {
           this->alive_counter[0] = '0';
         }
-        this->publish("nano/esp32/status", "online!");
+        this->publish(MQTT_TOPIC_STATUS, "online!", true);
         this->publish("nano/esp32/alive_counter", this->alive_counter);
         Serial.printf("alive counter2: %s\n", this->alive_counter);
       }
@@ -137,10 +155,10 @@ void mqtt_controller::disconnect() {
  * @retval true Publish accepted by PubSubClient.
  * @retval false Publish skipped (mutex timeout or client not ready).
  */
-bool mqtt_controller::publishSafe(const char* topic, const char* payload) {
+bool mqtt_controller::publishSafe(const char* topic, const char* payload, bool retained) {
   bool result = false;
   if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    result = PubSubClient::publish(topic, payload);
+    result = PubSubClient::publish(topic, payload, retained);
     xSemaphoreGive(mqttMutex);
   }
   return result;

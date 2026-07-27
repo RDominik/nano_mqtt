@@ -8,10 +8,6 @@
 /**
  * @brief Initialize MAX17048 fuel gauge over I2C.
  * @details
-/**
- * @brief Read battery telemetry and publish values to serial output.
- * @param[in,out] mqtt Unused, kept for API symmetry.
- */
  * Probes the device and stores monitor availability for later reads.
  */
 void setup_battery();

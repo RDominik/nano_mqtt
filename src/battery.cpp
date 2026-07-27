@@ -36,7 +36,8 @@ static const unsigned long BATTERY_PUBLISH_INTERVAL_MS = 30000;
 static const float BATTERY_VOLTAGE_DELTA = 0.02f;
 static const float BATTERY_PERCENT_DELTA = 0.5f;
 static const float BATTERY_RATE_DELTA = 0.10f;
-static const float BATTERY_CHARGING_THRESHOLD = 0.05f;
+// MAX17048 chargeRate can be small during gentle USB/trickle charging.
+static const float BATTERY_CHARGING_THRESHOLD = 0.005f;
 
 /**
  * @brief Initialize I2C bus and probe MAX17048 monitor.

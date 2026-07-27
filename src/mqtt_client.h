@@ -43,10 +43,11 @@ public:
      * @brief Publish under mutex protection.
      * @param[in] topic Topic name.
      * @param[in] payload Message payload.
+      * @param[in] retained When true, broker stores payload as retained message.
      * @retval true Publish accepted by PubSubClient.
      * @retval false Publish not sent (mutex timeout or disconnected state).
      */
-    bool publishSafe(const char* topic, const char* payload);
+     bool publishSafe(const char* topic, const char* payload, bool retained = false);
     /**
      * @brief Disconnect MQTT client under mutex protection.
      */
