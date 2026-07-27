@@ -23,7 +23,6 @@ const int BUTTON_GPIO = 3;    // raw GPIO number for wake-up mask
 
 String wakeup_reason = "";
 String reset_reason = "";
-bool woke_from_deepsleep = false;
 RTC_DATA_ATTR uint32_t boot_counter = 0;
 
 // Task-Handle
@@ -98,11 +97,9 @@ void setup() {
   switch (wakeup) {
     case ESP_SLEEP_WAKEUP_TIMER:
       wakeup_reason = "ESP_SLEEP_WAKEUP_TIMER";
-      woke_from_deepsleep = true;
       break;
     case ESP_SLEEP_WAKEUP_GPIO:
       wakeup_reason = "ESP_SLEEP_WAKEUP_GPIO";
-      woke_from_deepsleep = true;
       break;
     default:
       wakeup_reason = "NORMAL_START";
