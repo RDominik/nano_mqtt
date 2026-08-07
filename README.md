@@ -173,7 +173,7 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 
 | Topic | Payload | Effect |
 | --- | --- | --- |
-| `nano/esp32/engine` | `forward`, `backward`, `standby`, other -> `stop` | Controls motor command queue |
+| `nano/esp32/engine` | `open`, `close`, `standby`, other -> `stop` | Controls motor command queue |
 | `nano/esp32/sleepms` | positive integer (milliseconds) | Requests deep sleep for given duration |
 
 ### Published Topics (outgoing status/telemetry)
@@ -187,7 +187,7 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 | `nano/esp32/sleepms/wakeup_reason` | `NORMAL_START`, `ESP_SLEEP_WAKEUP_TIMER`, `ESP_SLEEP_WAKEUP_GPIO` | Wake-up reason after boot |
 | `nano/esp32/reset_reason` | reset reason enum text (for example `ESP_RST_BROWNOUT`) | Reset cause from ESP-IDF at boot |
 | `nano/esp32/boot_count` | incrementing integer string | Boot counter retained in RTC memory |
-| `nano/esp32/engine/set` | `forward`, `backward`, `stop`, `standby` | Published motor state transitions |
+| `nano/esp32/engine/set` | `open`, `close`, `stop`, `standby` | Published motor state transitions |
 | `nano/esp32/battery/monitor` | `activated` / `deactivated` | Battery monitor availability |
 | `nano/esp32/battery/voltage` | float string (for example `3.92`) | Battery voltage in volts |
 | `nano/esp32/battery/percent` | float string (for example `76.4`) | Battery state of charge in percent |
@@ -196,6 +196,8 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 
 The `nano/esp32/battery/charging` topic is derived from the MAX17048 charge rate. It does not come from a dedicated charger pin, so it reflects the fuel gauge estimate rather than a physical charge-detect signal.
 The `nano/esp32/status` topic is published as retained and also configured as MQTT Last Will, so the broker can switch it to `offline` if power is lost abruptly.
+
+Note: `nano/esp32/engine` is the command topic. `nano/esp32/engine/set` is the state topic the firmware publishes after a motor transition.
 
 ## Common Issues
 
