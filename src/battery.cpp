@@ -32,26 +32,51 @@ static bool batteryOk = false;
 #define I2C_SDA 6
 #define I2C_SCL 7
 
-static const unsigned long BATTERY_PUBLISH_INTERVAL_MS = 30000;
+static const unsigned long BATTERY_PUBLISH_INTERVAL_MS = 2000;
 static const float BATTERY_VOLTAGE_DELTA = 0.02f;
 static const float BATTERY_PERCENT_DELTA = 0.5f;
 static const float BATTERY_RATE_DELTA = 0.10f;
 // MAX17048 chargeRate can be small during gentle USB/trickle charging.
 static const float BATTERY_CHARGING_THRESHOLD = 0.005f;
+static const unsigned long BATTERY_REPROBE_INTERVAL_MS = 5000;
+static const uint8_t BATTERY_INVALID_READ_LIMIT = 3;
+
+/**
+ * @brief Reinitialize the I2C bus used by the battery monitor.
+ */
+static void recoverBatteryI2cBus() {
+  Wire.end();
+  delay(5);
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(100000);  // 100 kHz is more robust on longer/noisier wiring
+}
+
+/**
+ * @brief Probe MAX17048 and update availability state.
+ * @retval true Monitor is available.
+ * @retval false Monitor is unavailable.
+ */
+static bool probeBatteryMonitor() {
+  bool ok = maxlipo.begin(&Wire);
+  if (ok && !batteryOk) {
+    Serial.println("MAX17048 found!");
+  } else if (!ok && batteryOk) {
+    Serial.println("MAX17048 lost!");
+  }
+  batteryOk = ok;
+  return batteryOk;
+}
 
 /**
  * @brief Initialize I2C bus and probe MAX17048 monitor.
  */
 void setup_battery() {
   Wire.begin(I2C_SDA, I2C_SCL);  // XIAO ESP32C3: SDA=GPIO6, SCL=GPIO7
+  Wire.setClock(100000);         // keep I2C conservative for stability
   delay(200);  // give I2C bus time to settle
 
-  if (!maxlipo.begin(&Wire)) {
-    Serial.println("MAX17048 not found!");
-    batteryOk = false;
-  } else {
-    Serial.println("MAX17048 found!");
-    batteryOk = true;
+  if (!probeBatteryMonitor()) {
+    Serial.println("MAX17048 not found at boot (will retry every 5s)");
   }
 }
 
@@ -82,7 +107,9 @@ float getBatteryVoltage() {
  */
 float getBatteryPercent() {
   if (!batteryOk) return -1.0f;
-  return maxlipo.cellPercent();
+  float value = maxlipo.cellPercent();
+  if (!isfinite(value)) return -1.0f;
+  return value;
 }
 
 /**
@@ -91,7 +118,9 @@ float getBatteryPercent() {
  */
 float getBatteryChargeRate() {
   if (!batteryOk) return 0.0f;
-  return maxlipo.chargeRate();
+  float value = maxlipo.chargeRate();
+  if (!isfinite(value)) return 0.0f;
+  return value;
 }
 
 /**
@@ -124,6 +153,10 @@ void read_battery(mqtt_controller& mqtt) {
  * @param[in,out] mqtt MQTT controller used for publishing.
  */
 void run_battery(mqtt_controller& mqtt) {
+  static unsigned long lastProbeAttempt = 0;
+  static bool lastPublishedMonitorState = false;
+  static bool hasPublishedMonitorState = false;
+  static uint8_t invalidReadStreak = 0;
   static unsigned long lastBatMsg = 0;
   static bool haveLastValues = false;
   static float lastVoltage = 0.0f;
@@ -132,12 +165,26 @@ void run_battery(mqtt_controller& mqtt) {
   static bool lastCharging = false;
 
   unsigned long now = millis();
+
+  if (!batteryOk && ((now - lastProbeAttempt) >= BATTERY_REPROBE_INTERVAL_MS)) {
+    lastProbeAttempt = now;
+    probeBatteryMonitor();
+  }
+
+  if (!hasPublishedMonitorState || (batteryOk != lastPublishedMonitorState)) {
+    mqtt.publishSafe("nano/esp32/battery/monitor", batteryOk ? "activated" : "deactivated", true);
+    lastPublishedMonitorState = batteryOk;
+    hasPublishedMonitorState = true;
+  }
+
   float voltage = getBatteryVoltage();
   float percent = getBatteryPercent();
   float rate    = getBatteryChargeRate();
   bool charging = getBatteryCharging();
 
-  if (voltage >= 0) {
+  if (voltage >= 0 && percent >= 0.0f && percent <= 100.0f && isfinite(rate)) {
+    invalidReadStreak = 0;
+
     // Emit telemetry on relevant value changes or periodic heartbeat timeout.
     bool valueChanged = !haveLastValues ||
       (fabsf(voltage - lastVoltage) >= BATTERY_VOLTAGE_DELTA) ||
@@ -166,5 +213,16 @@ void run_battery(mqtt_controller& mqtt) {
     lastRate = rate;
     lastCharging = charging;
     haveLastValues = true;
+  } else if (batteryOk) {
+    // Sensor returned invalid values (for example NaN) while device is present.
+    Serial.println("Battery telemetry invalid (NaN/out-of-range), skipping publish");
+    invalidReadStreak++;
+    if (invalidReadStreak >= BATTERY_INVALID_READ_LIMIT) {
+      Serial.println("Battery monitor read failed repeatedly, forcing I2C recovery and reprobe");
+      batteryOk = false;
+      haveLastValues = false;
+      invalidReadStreak = 0;
+      recoverBatteryI2cBus();
+    }
   }
 }
