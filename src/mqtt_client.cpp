@@ -204,11 +204,11 @@ void message_control(char* topic, char * msg) {
   // motor control via MQTT
   if (strcmp(topic, MQTT_TOPIC_ENGINE) == 0) {
     // Route command into motor queue; do not access motor hardware from MQTT task.
-    if (strcmp(msg, "forward") == 0) {
+    if ((strcmp(msg, "open") == 0) || (strcmp(msg, "\"open\"") == 0)) {
       request_motor_command(MOTOR_CMD_FORWARD);
-    } else if (strcmp(msg, "backward") == 0) {
+    } else if ((strcmp(msg, "close") == 0) || (strcmp(msg, "\"close\"") == 0)) {
       request_motor_command(MOTOR_CMD_BACKWARD);
-    } else if (strcmp(msg, "standby") == 0) {
+    } else if ((strcmp(msg, "standby") == 0) || (strcmp(msg, "\"standby\"") == 0)) {
       request_motor_command(MOTOR_CMD_STANDBY);
     } else {
       request_motor_command(MOTOR_CMD_STOP);

@@ -110,28 +110,33 @@ void run_motor(mqtt_controller& mqtt) {
   // ── button handler (debounce 300 ms) ──
   static uint8_t state_button = 0U;
   static boolean button_flag = false;
+  bool mqttCommandApplied = false;
 
   // Execute queued command first so remote control is reflected promptly.
   switch (fetch_motor_command()) {
     case MOTOR_CMD_FORWARD:
       motorForward(motorSpeed);
+      mqttCommandApplied = true;
       break;
     case MOTOR_CMD_BACKWARD:
       motorBackward(motorSpeed);
+      mqttCommandApplied = true;
       break;
     case MOTOR_CMD_STANDBY:
       state_button = 0;
       motorStandby();
+      mqttCommandApplied = true;
       break;
     case MOTOR_CMD_STOP:
       state_button = 0;
       motorStop();
+      mqttCommandApplied = true;
       break;
     default:
       break;
   }
 
-  // Reed switch is treated as a hard stop condition.
+  Reed switch is treated as a hard stop condition.
   if (digitalRead(REED1_PIN) == LOW) {
     state_button = 0;
     motorStop();
@@ -159,17 +164,17 @@ void run_motor(mqtt_controller& mqtt) {
       button_flag = false;
   }
 
-  if (running_state == lastPublishedState) {
+  if (!mqttCommandApplied && running_state == lastPublishedState) {
     return;
   }
 
   // Publish only state transitions to keep MQTT traffic minimal.
   switch(running_state) {
     case RUN_STATE_FORWARD:
-      mqtt.publishSafe("nano/esp32/engine/set", "forward");
+      mqtt.publishSafe("nano/esp32/engine/set", "open");
       break;
     case RUN_STATE_BACKWARD:
-      mqtt.publishSafe("nano/esp32/engine/set", "backward");
+      mqtt.publishSafe("nano/esp32/engine/set", "close");
       break;
     case RUN_STATE_STOP:
       mqtt.publishSafe("nano/esp32/engine/set", "stop");
