@@ -1,4 +1,5 @@
 #include "battery.h"
+#include "mqtt_topics.h"
 #include <Wire.h>
 #include <Adafruit_MAX1704X.h>
 #include <math.h>
@@ -86,10 +87,29 @@ void setup_battery() {
  */
 void publish_batteryStatus(mqtt_controller& mqtt) {
   if (batteryOk == false) {
-    mqtt.publishSafe("nano/esp32/battery/monitor", "deactivated");
+    mqtt.publishSafe(mqtt_topics::BATTERY_MONITOR, "deactivated");
   } else {
-    mqtt.publishSafe("nano/esp32/battery/monitor", "activated");
+    mqtt.publishSafe(mqtt_topics::BATTERY_MONITOR, "activated");
   }
+}
+
+/**
+ * @brief Publish current battery percentage without threshold throttling.
+ * @param[in,out] mqtt MQTT controller used for publishing.
+ * @param[in] retained When true, publish as retained message.
+ * @retval true Percentage was available and published.
+ * @retval false Percentage was unavailable.
+ */
+bool publish_batteryPercentNow(mqtt_controller& mqtt, bool retained) {
+  float percent = getBatteryPercent();
+  if (percent < 0.0f || percent > 100.0f || !isfinite(percent)) {
+    return false;
+  }
+
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%.1f", percent);
+  mqtt.publishSafe(mqtt_topics::BATTERY_PERCENT, buf, retained);
+  return true;
 }
 
 /**
@@ -172,7 +192,7 @@ void run_battery(mqtt_controller& mqtt) {
   }
 
   if (!hasPublishedMonitorState || (batteryOk != lastPublishedMonitorState)) {
-    mqtt.publishSafe("nano/esp32/battery/monitor", batteryOk ? "activated" : "deactivated", true);
+    mqtt.publishSafe(mqtt_topics::BATTERY_MONITOR, batteryOk ? "activated" : "deactivated", true);
     lastPublishedMonitorState = batteryOk;
     hasPublishedMonitorState = true;
   }
@@ -199,12 +219,12 @@ void run_battery(mqtt_controller& mqtt) {
 
     char buf[32];
     snprintf(buf, sizeof(buf), "%.2f", voltage);
-    mqtt.publishSafe("nano/esp32/battery/voltage", buf);
+    mqtt.publishSafe(mqtt_topics::BATTERY_VOLTAGE, buf);
     snprintf(buf, sizeof(buf), "%.1f", percent);
-    mqtt.publishSafe("nano/esp32/battery/percent", buf);
+    mqtt.publishSafe(mqtt_topics::BATTERY_PERCENT, buf);
     snprintf(buf, sizeof(buf), "%.2f", rate);
-    mqtt.publishSafe("nano/esp32/battery/rate", buf);
-    mqtt.publishSafe("nano/esp32/battery/charging", charging ? "charging" : "not_charging");
+    mqtt.publishSafe(mqtt_topics::BATTERY_RATE, buf);
+    mqtt.publishSafe(mqtt_topics::BATTERY_CHARGING, charging ? "charging" : "not_charging");
     Serial.printf("Battery: %.2f V, %.1f %%, Rate: %.2f %%/h\n", voltage, percent, rate);
 
     lastBatMsg = now;

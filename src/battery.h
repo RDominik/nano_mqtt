@@ -17,6 +17,14 @@ void setup_battery();
  */
 void publish_batteryStatus(mqtt_controller& mqtt);
 /**
+ * @brief Publish the current battery percentage immediately.
+ * @param[in,out] mqtt MQTT controller used for publishing.
+ * @param[in] retained When true, publish as retained message.
+ * @retval true Percentage was read and published.
+ * @retval false Percentage was unavailable and not published.
+ */
+bool publish_batteryPercentNow(mqtt_controller& mqtt, bool retained = false);
+/**
  * @brief Read and publish battery telemetry with threshold-based throttling.
  * @param[in,out] mqtt MQTT controller used for publishing.
  * @details

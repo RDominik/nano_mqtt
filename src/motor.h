@@ -17,11 +17,10 @@ enum MotorCommand : uint8_t {
 	MOTOR_CMD_STANDBY
 };
 
-// ── TB6612FNG Motor Driver Pins ────────────────────────────────
-const int MOTOR_AIN1 = D8;   // direction 1
-const int MOTOR_AIN2 = D9;   // direction 2
-const int MOTOR_PWMA = D10;   // PWM speed
-const int MOTOR_STBY = D7;   // Standby (HIGH = active)
+// ── DRV8838 Motor Driver Pins ──────────────────────────────────
+const int MOTOR_ENABLE = D8;   // PWM / enable
+const int MOTOR_PHASE = D9;    // direction
+const int MOTOR_SLEEP = D10;   // sleep control (HIGH = active)
 
 const int BUTTON_PIN  = D1;   // Button pin (active LOW)
 const int REED1_PIN   = D2;   // Reed switch pin (active LOW)
@@ -35,9 +34,9 @@ const int PWM_RES      = 8;     // 8 Bit → 0-255
 extern int motorSpeed;
 
 /**
- * @brief Initialize the TB6612FNG driver and PWM output.
+ * @brief Initialize the DRV8838 driver and PWM output.
  * @details
- * Configures LEDC PWM and sets the motor driver to standby as a safe default.
+ * Configures LEDC PWM on ENABLE and sets the driver to sleep as a safe default.
  */
 void setup_motor();
 /**

@@ -8,6 +8,7 @@
 #include "motor.h"
 #include "mqtt_client.h"
 #include "battery.h"
+#include "mqtt_topics.h"
 
 /**
  * @file main.cpp
@@ -133,11 +134,11 @@ void setup_pins() {
   // button with internal pull-up, active LOW
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(REED1_PIN, INPUT_PULLUP);
-  // initialize TB6612FNG pins
-  pinMode(MOTOR_AIN1, OUTPUT);
-  pinMode(MOTOR_AIN2, OUTPUT);
-  pinMode(MOTOR_STBY, OUTPUT);
-  digitalWrite(MOTOR_STBY, LOW);  // standby until MQTT command 
+  // initialize DRV8838 pins
+  pinMode(MOTOR_ENABLE, OUTPUT);
+  pinMode(MOTOR_PHASE, OUTPUT);
+  pinMode(MOTOR_SLEEP, OUTPUT);
+  digitalWrite(MOTOR_SLEEP, LOW);  // sleep until command arrives
 }
 
 // ── Loop (Core 1) ─────────────────────────────────────────────
@@ -248,7 +249,8 @@ void deepSleep_handling() {
 
   // cleanly disconnect MQTT (publish + disconnect)
   uint64_t sleepTimeMs = get_sleepTimeMs();
-  mqtt.sleep("nano/esp32/status", "sleeping");
+  publish_batteryPercentNow(mqtt);
+  mqtt.sleep(mqtt_topics::STATUS, "sleeping");
 
   // stop MQTT task BEFORE WiFi is disconnected (avoid race condition)
   if (mqttTaskHandle != NULL) {
@@ -314,12 +316,13 @@ void startup_task() {
     initialized = true;
     run_battery(mqtt);
     publish_batteryStatus(mqtt);
+    publish_batteryPercentNow(mqtt, true);
     char bootCounterBuf[16];
     snprintf(bootCounterBuf, sizeof(bootCounterBuf), "%lu", (unsigned long)boot_counter);
-    mqtt.publishSafe("nano/esp32/boot_count", bootCounterBuf, true);
-    mqtt.publishSafe("nano/esp32/reset_reason", reset_reason.c_str(), true);
-    mqtt.publishSafe("nano/esp32/sleepms/wakeup_reason", wakeup_reason.c_str());
-    mqtt.publishSafe("nano/esp32/sleepms", "0", true);
+    mqtt.publishSafe(mqtt_topics::BOOT_COUNT, bootCounterBuf, true);
+    mqtt.publishSafe(mqtt_topics::RESET_REASON, reset_reason.c_str(), true);
+    mqtt.publishSafe(mqtt_topics::SLEEP_MS_WAKEUP_REASON, wakeup_reason.c_str());
+    mqtt.publishSafe(mqtt_topics::SLEEP_MS, "0", true);
   }
 
 }

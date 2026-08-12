@@ -1,4 +1,5 @@
 #include "motor.h"
+#include "mqtt_topics.h"
 
 #include <freertos/FreeRTOS.h>
 
@@ -42,15 +43,15 @@ void request_motor_command(MotorCommand command) {
 }
 
 /**
- * @brief Initialize PWM output and put motor into standby.
+ * @brief Initialize PWM output and put motor driver into sleep mode.
  */
 void setup_motor() {
 
   // configure PWM for motor
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
-  ledcAttachPin(MOTOR_PWMA, PWM_CHANNEL);
+  ledcAttachPin(MOTOR_ENABLE, PWM_CHANNEL);
   ledcWrite(PWM_CHANNEL, 0);
-  Serial.println("TB6612FNG motor driver initialized.");
+  Serial.println("DRV8838 motor driver initialized.");
 
   // start motor in standby
   motorStandby();
@@ -61,9 +62,8 @@ void setup_motor() {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorForward(int speed) {
-  digitalWrite(MOTOR_STBY, HIGH);
-  digitalWrite(MOTOR_AIN1, HIGH);
-  digitalWrite(MOTOR_AIN2, LOW);
+  digitalWrite(MOTOR_SLEEP, HIGH);
+  digitalWrite(MOTOR_PHASE, HIGH);
   ledcWrite(PWM_CHANNEL, speed);
   running_state = RUN_STATE_FORWARD;
 }
@@ -73,9 +73,8 @@ void motorForward(int speed) {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorBackward(int speed) {
-  digitalWrite(MOTOR_STBY, HIGH);
-  digitalWrite(MOTOR_AIN1, LOW);
-  digitalWrite(MOTOR_AIN2, HIGH);
+  digitalWrite(MOTOR_SLEEP, HIGH);
+  digitalWrite(MOTOR_PHASE, LOW);
   ledcWrite(PWM_CHANNEL, speed);
   running_state = RUN_STATE_BACKWARD;
 }
@@ -84,8 +83,7 @@ void motorBackward(int speed) {
  * @brief Stop motor motion by clearing direction pins and PWM.
  */
 void motorStop() {
-  digitalWrite(MOTOR_AIN1, LOW);
-  digitalWrite(MOTOR_AIN2, LOW);
+  digitalWrite(MOTOR_SLEEP, HIGH);
   ledcWrite(PWM_CHANNEL, 0);
   running_state = RUN_STATE_STOP;
 }
@@ -94,8 +92,8 @@ void motorStop() {
  * @brief Set motor driver to standby mode.
  */
 void motorStandby() {
-  digitalWrite(MOTOR_STBY, LOW);
   ledcWrite(PWM_CHANNEL, 0);
+  digitalWrite(MOTOR_SLEEP, LOW);
   running_state = RUN_STATE_STANDBY;
   Serial.println("Motor: STANDBY");
 }
@@ -136,7 +134,7 @@ void run_motor(mqtt_controller& mqtt) {
       break;
   }
 
-  Reed switch is treated as a hard stop condition.
+  // Reed switch is treated as a hard stop condition.
   if (digitalRead(REED1_PIN) == LOW) {
     state_button = 0;
     motorStop();
@@ -171,16 +169,16 @@ void run_motor(mqtt_controller& mqtt) {
   // Publish only state transitions to keep MQTT traffic minimal.
   switch(running_state) {
     case RUN_STATE_FORWARD:
-      mqtt.publishSafe("nano/esp32/engine/set", "open");
+      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "open");
       break;
     case RUN_STATE_BACKWARD:
-      mqtt.publishSafe("nano/esp32/engine/set", "close");
+      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "close");
       break;
     case RUN_STATE_STOP:
-      mqtt.publishSafe("nano/esp32/engine/set", "stop");
+      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "stop");
       break;
     case RUN_STATE_STANDBY:
-      mqtt.publishSafe("nano/esp32/engine/set", "standby");
+      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "standby");
       break;
     default:
       break;

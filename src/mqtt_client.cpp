@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include "mqtt_client.h"
 #include "motor.h"
+#include "mqtt_topics.h"
 
 /**
  * @file mqtt_client.cpp
@@ -21,12 +22,6 @@ void set_sleepRequested(bool requested, uint64_t time_in_ms = 0UL);
 void message_control(char* topic, char * msg); 
 
 static constexpr size_t MQTT_MSG_BUFFER_SIZE = 128;
-static constexpr const char* MQTT_TOPIC_ENGINE = "nano/esp32/engine";
-static constexpr const char* MQTT_TOPIC_SLEEPMS = "nano/esp32/sleepms";
-static constexpr const char* MQTT_TOPIC_IP = "nano/esp32/ip";
-static constexpr const char* MQTT_TOPIC_ENGINE_STATUS = "nano/esp32/engine/status";
-static constexpr const char* MQTT_TOPIC_SLEEPMS_STATUS = "nano/esp32/sleepms/status";
-static constexpr const char* MQTT_TOPIC_STATUS = "nano/esp32/status";
 
 /**
  * @brief Build a stable, device-unique MQTT client ID.
@@ -72,20 +67,20 @@ void mqtt_controller::mqttReconnect() {
   char mqttClientId[32];
   buildMqttClientId(mqttClientId, sizeof(mqttClientId));
 
-  if (this->connect(mqttClientId, MQTT_TOPIC_STATUS, 1, true, "offline")) {
+  if (this->connect(mqttClientId, mqtt_topics::STATUS, 1, true, "offline")) {
     Serial.println("connected");
     Serial.printf("MQTT Client ID: %s\n", mqttClientId);
     String ip = WiFi.localIP().toString();
-    bool sub1 = this->subscribe(MQTT_TOPIC_ENGINE);
-    bool sub2 = this->subscribe(MQTT_TOPIC_SLEEPMS);
-    this->publish(MQTT_TOPIC_IP, ip.c_str());
-    this->publish(MQTT_TOPIC_STATUS, "online!", true);
-    this->publish(MQTT_TOPIC_ENGINE_STATUS, (sub1 ? "OK" : "FAIL"));
-    this->publish(MQTT_TOPIC_SLEEPMS_STATUS, (sub2 ? "OK" : "FAIL"));
-    Serial.printf("Publish %s: %s\n", MQTT_TOPIC_IP, ip.c_str());
-    Serial.printf("Publish %s: %s\n", MQTT_TOPIC_STATUS, "online!");
-    Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_ENGINE, sub1 ? "OK" : "FAIL");
-    Serial.printf("Subscribe %s: %s\n", MQTT_TOPIC_SLEEPMS, sub2 ? "OK" : "FAIL");
+    bool sub1 = this->subscribe(mqtt_topics::ENGINE);
+    bool sub2 = this->subscribe(mqtt_topics::SLEEP_MS);
+    this->publish(mqtt_topics::IP, ip.c_str());
+    this->publish(mqtt_topics::STATUS, "online!", true);
+    this->publish(mqtt_topics::ENGINE_STATUS, (sub1 ? "OK" : "FAIL"));
+    this->publish(mqtt_topics::SLEEP_MS_STATUS, (sub2 ? "OK" : "FAIL"));
+    Serial.printf("Publish %s: %s\n", mqtt_topics::IP, ip.c_str());
+    Serial.printf("Publish %s: %s\n", mqtt_topics::STATUS, "online!");
+    Serial.printf("Subscribe %s: %s\n", mqtt_topics::ENGINE, sub1 ? "OK" : "FAIL");
+    Serial.printf("Subscribe %s: %s\n", mqtt_topics::SLEEP_MS, sub2 ? "OK" : "FAIL");
   } else {
     Serial.print("failed, RC=");
     Serial.println(this->state());
@@ -113,8 +108,8 @@ void mqtt_controller::mqttRun() {
         if (this->alive_counter[0] > '9') {
           this->alive_counter[0] = '0';
         }
-        this->publish(MQTT_TOPIC_STATUS, "online!", true);
-        this->publish("nano/esp32/alive_counter", this->alive_counter);
+        this->publish(mqtt_topics::STATUS, "online!", true);
+        this->publish(mqtt_topics::ALIVE_COUNTER, this->alive_counter);
         Serial.printf("alive counter2: %s\n", this->alive_counter);
       }
       xSemaphoreGive(mqttMutex);
@@ -190,7 +185,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
  */
 void message_control(char* topic, char * msg) {
   // ── Deep Sleep via MQTT ──
-  if (strcmp(topic, MQTT_TOPIC_SLEEPMS) == 0) {
+  if (strcmp(topic, mqtt_topics::SLEEP_MS) == 0) {
     // Convert decimal payload text (milliseconds) to long integer; parsing stops at first non-digit.
     long ms = atol(msg);
     if (ms > 0) {
@@ -202,7 +197,7 @@ void message_control(char* topic, char * msg) {
   }
 
   // motor control via MQTT
-  if (strcmp(topic, MQTT_TOPIC_ENGINE) == 0) {
+  if (strcmp(topic, mqtt_topics::ENGINE) == 0) {
     // Route command into motor queue; do not access motor hardware from MQTT task.
     if ((strcmp(msg, "open") == 0) || (strcmp(msg, "\"open\"") == 0)) {
       request_motor_command(MOTOR_CMD_FORWARD);
