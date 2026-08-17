@@ -13,7 +13,16 @@
 #define RUN_STATE_STOP 3
 #define RUN_STATE_STANDBY 4
 
-int motorSpeed = 200;
+int motorSpeed = 100;
+
+/**
+ * @brief Apply PWM duty cycle with 8-bit safety clamping.
+ * @param[in] speed Requested duty cycle.
+ */
+static void applyMotorPwm(int speed) {
+  int duty = constrain(speed, 0, 255);
+  ledcWrite(PWM_CHANNEL, duty);
+}
 
 static uint8_t running_state = 0;
 static volatile MotorCommand pending_command = MOTOR_CMD_NONE;
@@ -64,7 +73,8 @@ void setup_motor() {
 void motorForward(int speed) {
   digitalWrite(MOTOR_SLEEP, HIGH);
   digitalWrite(MOTOR_PHASE, HIGH);
-  ledcWrite(PWM_CHANNEL, speed);
+  applyMotorPwm(speed);
+  Serial.printf("Motor FORWARD: pwm=%d\n", constrain(speed, 0, 255));
   running_state = RUN_STATE_FORWARD;
 }
 
@@ -75,7 +85,8 @@ void motorForward(int speed) {
 void motorBackward(int speed) {
   digitalWrite(MOTOR_SLEEP, HIGH);
   digitalWrite(MOTOR_PHASE, LOW);
-  ledcWrite(PWM_CHANNEL, speed);
+  applyMotorPwm(speed);
+  Serial.printf("Motor BACKWARD: pwm=%d\n", constrain(speed, 0, 255));
   running_state = RUN_STATE_BACKWARD;
 }
 
@@ -85,6 +96,7 @@ void motorBackward(int speed) {
 void motorStop() {
   digitalWrite(MOTOR_SLEEP, HIGH);
   ledcWrite(PWM_CHANNEL, 0);
+  Serial.println("Motor STOP");
   running_state = RUN_STATE_STOP;
 }
 
@@ -113,19 +125,23 @@ void run_motor(mqtt_controller& mqtt) {
   // Execute queued command first so remote control is reflected promptly.
   switch (fetch_motor_command()) {
     case MOTOR_CMD_FORWARD:
+      Serial.println("MQTT command: FORWARD");
       motorForward(motorSpeed);
       mqttCommandApplied = true;
       break;
     case MOTOR_CMD_BACKWARD:
+      Serial.println("MQTT command: BACKWARD");
       motorBackward(motorSpeed);
       mqttCommandApplied = true;
       break;
     case MOTOR_CMD_STANDBY:
+      Serial.println("MQTT command: STANDBY");
       state_button = 0;
       motorStandby();
       mqttCommandApplied = true;
       break;
     case MOTOR_CMD_STOP:
+      Serial.println("MQTT command: STOP");
       state_button = 0;
       motorStop();
       mqttCommandApplied = true;
@@ -135,10 +151,10 @@ void run_motor(mqtt_controller& mqtt) {
   }
 
   // Reed switch is treated as a hard stop condition.
-  if (digitalRead(REED1_PIN) == LOW) {
-    state_button = 0;
-    motorStop();
-  }
+  // if (!mqttCommandApplied && digitalRead(REED1_PIN) == LOW) {
+  //   state_button = 0;
+  //   motorStop();
+  // }
   if ((digitalRead(BUTTON_PIN) == LOW) && (millis() - lastButtonPress > 300) && !button_flag) {
     lastButtonPress = millis();
     button_flag = true;
