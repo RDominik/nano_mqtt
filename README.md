@@ -194,6 +194,12 @@ The active PlatformIO environments are defined in [platformio.ini](platformio.in
 | `nano/esp32/battery/rate` | float string (for example `-0.35`) | Charge/discharge rate in percent per hour |
 | `nano/esp32/battery/charging` | `charging` / `not_charging` | Derived from the MAX17048 charge rate and published when the charging state changes |
 
+Retained message behavior:
+
+- A retained MQTT publish stores the latest payload on the broker for that topic.
+- New subscribers receive that last retained payload immediately after subscribe.
+- In this firmware, `nano/esp32/status` is retained, so clients typically see `online!`, `sleeping`, or `offline` right away.
+
 The `nano/esp32/battery/charging` topic is derived from the MAX17048 charge rate. It does not come from a dedicated charger pin, so it reflects the fuel gauge estimate rather than a physical charge-detect signal.
 The `nano/esp32/status` topic is published as retained and also configured as MQTT Last Will, so the broker can switch it to `offline` if power is lost abruptly.
 
