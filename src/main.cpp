@@ -247,17 +247,17 @@ void deepSleep_handling() {
   // turn off LEDs
   // digitalWrite(LED_BUILTIN, LOW);
 
-  // cleanly disconnect MQTT (publish + disconnect)
-  uint64_t sleepTimeMs = get_sleepTimeMs();
-  publish_batteryPercentNow(mqtt);
-  mqtt.sleep(mqtt_topics::STATUS, "sleeping");
-
-  // stop MQTT task BEFORE WiFi is disconnected (avoid race condition)
+  // stop MQTT task before sleep publish to avoid reconnect races.
   if (mqttTaskHandle != NULL) {
     vTaskDelete(mqttTaskHandle);
     mqttTaskHandle = NULL;
     Serial.println("MQTT task stopped.");
   }
+
+  // cleanly disconnect MQTT (publish + disconnect)
+  uint64_t sleepTimeMs = get_sleepTimeMs();
+  publish_batteryPercentNow(mqtt);
+  mqtt.sleep(mqtt_topics::STATUS, "sleeping", true);
 
   // WiFi off
   WiFi.disconnect(true);

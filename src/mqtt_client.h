@@ -71,8 +71,9 @@ public:
      * @brief Publish sleep status and disconnect cleanly.
      * @param[in] topic Topic name.
      * @param[in] message Payload.
+        * @param[in] retained When true, publish sleep status as retained message.
      */
-    void sleep(const char* topic, const char* message);
+        void sleep(const char* topic, const char* message, bool retained = true);
 
 
 private:

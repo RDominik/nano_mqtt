@@ -122,10 +122,11 @@ void mqtt_controller::mqttRun() {
  * @brief Publish a final sleep status and disconnect.
  * @param[in] topic Target MQTT topic.
  * @param[in] message Payload message.
+ * @param[in] retained When true, publish as retained status.
  */
-void mqtt_controller::sleep(const char* topic, const char* message) {
+void mqtt_controller::sleep(const char* topic, const char* message, bool retained) {
   if (xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-    PubSubClient::publish(topic, message);
+    PubSubClient::publish(topic, message, retained);
     delay(100);  // allow publish to be sent
     PubSubClient::disconnect();
     xSemaphoreGive(mqttMutex);
