@@ -84,7 +84,7 @@ static bool process_mqtt_motor_command(uint8_t& state_button) {
  * @retval false No button action was taken.
  */
 static bool process_button_motor_state(unsigned long& lastButtonPress, boolean& button_flag, uint8_t& state_button) {
-  if ((digitalRead(BUTTON_PIN) == LOW) && (millis() - lastButtonPress > 300) && !button_flag) {
+  if ((digitalRead(pins::BUTTON) == LOW) && (millis() - lastButtonPress > 300) && !button_flag) {
     lastButtonPress = millis();
     button_flag = true;
 
@@ -104,7 +104,7 @@ static bool process_button_motor_state(unsigned long& lastButtonPress, boolean& 
     }
   }
 
-  if (digitalRead(BUTTON_PIN) == HIGH) {
+  if (digitalRead(pins::BUTTON) == HIGH) {
     button_flag = false;
   }
 
@@ -170,7 +170,7 @@ void setup_motor() {
 
   // configure PWM for motor
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
-  ledcAttachPin(MOTOR_ENABLE, PWM_CHANNEL);
+  ledcAttachPin(pins::MOTOR_ENABLE, PWM_CHANNEL);
   ledcWrite(PWM_CHANNEL, 0);
   Serial.println("DRV8838 motor driver initialized.");
 
@@ -183,8 +183,8 @@ void setup_motor() {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorForward(int speed) {
-  digitalWrite(MOTOR_SLEEP, HIGH);
-  digitalWrite(MOTOR_PHASE, HIGH);
+  digitalWrite(pins::MOTOR_SLEEP, HIGH);
+  digitalWrite(pins::MOTOR_PHASE, HIGH);
   applyMotorPwm(speed);
   Serial.printf("Motor FORWARD: pwm=%d\n", constrain(speed, 0, 255));
   motor_run_started_ms = millis();
@@ -196,8 +196,8 @@ void motorForward(int speed) {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorBackward(int speed) {
-  digitalWrite(MOTOR_SLEEP, HIGH);
-  digitalWrite(MOTOR_PHASE, LOW);
+  digitalWrite(pins::MOTOR_SLEEP, HIGH);
+  digitalWrite(pins::MOTOR_PHASE, LOW);
   applyMotorPwm(speed);
   Serial.printf("Motor BACKWARD: pwm=%d\n", constrain(speed, 0, 255));
   motor_run_started_ms = millis();
@@ -208,7 +208,7 @@ void motorBackward(int speed) {
  * @brief Stop motor motion by clearing direction pins and PWM.
  */
 void motorStop() {
-  digitalWrite(MOTOR_SLEEP, HIGH);
+  digitalWrite(pins::MOTOR_SLEEP, HIGH);
   ledcWrite(PWM_CHANNEL, 0);
   Serial.println("Motor STOP");
   motor_run_started_ms = 0;
@@ -220,7 +220,7 @@ void motorStop() {
  */
 void motorStandby() {
   ledcWrite(PWM_CHANNEL, 0);
-  digitalWrite(MOTOR_SLEEP, LOW);
+  digitalWrite(pins::MOTOR_SLEEP, LOW);
   motor_run_started_ms = 0;
   running_state = RUN_STATE_STANDBY;
   Serial.println("Motor: STANDBY");

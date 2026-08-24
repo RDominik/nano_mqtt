@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "mqtt_client.h"
+#include "pins.h"
 
 /**
  * @brief Motor commands that can be queued from other execution contexts.
@@ -17,14 +18,6 @@ enum MotorCommand : uint8_t {
 	MOTOR_CMD_STANDBY
 };
 
-// ── DRV8838 Motor Driver Pins ──────────────────────────────────
-const int MOTOR_ENABLE = D8;   // PWM / enable
-const int MOTOR_PHASE = D9;    // direction
-const int MOTOR_SLEEP = D10;   // sleep control (HIGH = active)
-
-const int BUTTON_PIN  = D1;   // Button pin (active LOW)
-const int REED1_PIN   = D2;   // Reed switch pin (active LOW)
-const int REED2_PIN   = D3;   // Reed switch pin (active LOW)
 // PWM configuration (ESP32 LEDC)
 const int PWM_CHANNEL  = 0;
 const int PWM_FREQ     = 20000;  // 20 kHz

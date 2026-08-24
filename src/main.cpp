@@ -4,11 +4,13 @@
 #include <PubSubClient.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <driver/gpio.h>
 #include "secrets.h"  // ssid, password, mqtt_server, ota_password
 #include "motor.h"
 #include "mqtt_client.h"
 #include "battery.h"
 #include "mqtt_topics.h"
+#include "pins.h"
 
 /**
  * @file main.cpp
@@ -19,8 +21,6 @@ WiFiClient   wifiClient;
 mqtt_controller mqtt(wifiClient);
 
 // ── Button ─────────────────────────────────────────────────────
-
-const int BUTTON_GPIO = 3;    // raw GPIO number for wake-up mask
 
 String wakeup_reason = "";
 String reset_reason = "";
@@ -56,6 +56,14 @@ void connectWiFi(bool force = false);
  * @brief Configure GPIO directions and pull-ups.
  */
 void setup_pins();
+/**
+ * @brief Release GPIO deep-sleep holds so pins can be reconfigured after wake.
+ */
+void release_sleep_pin_holds();
+/**
+ * @brief Drive motor/regulator control pins LOW and latch them for deep sleep.
+ */
+void prepare_pins_for_deepsleep();
 /**
  * @brief Convert reset reason enum to readable text.
  * @param[in] reason Raw reset reason from ESP-IDF.
@@ -130,15 +138,51 @@ const char* resetReasonToString(esp_reset_reason_t reason) {
 }
 
 void setup_pins() {
+  release_sleep_pin_holds();
+
   // pinMode(LED_BUILTIN, OUTPUT);
+  // enable S13V30F5 directly after wake/boot
+  pinMode(pins::REGULATOR_EN, OUTPUT);
+  digitalWrite(pins::REGULATOR_EN, HIGH);
+
   // button with internal pull-up, active LOW
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(REED1_PIN, INPUT_PULLUP);
+  pinMode(pins::BUTTON, INPUT_PULLUP);
+  pinMode(pins::REED1, INPUT_PULLUP);
   // initialize DRV8838 pins
-  pinMode(MOTOR_ENABLE, OUTPUT);
-  pinMode(MOTOR_PHASE, OUTPUT);
-  pinMode(MOTOR_SLEEP, OUTPUT);
-  digitalWrite(MOTOR_SLEEP, LOW);  // sleep until command arrives
+  pinMode(pins::MOTOR_ENABLE, OUTPUT);
+  pinMode(pins::MOTOR_PHASE, OUTPUT);
+  pinMode(pins::MOTOR_SLEEP, OUTPUT);
+  digitalWrite(pins::MOTOR_SLEEP, LOW);  // sleep until command arrives
+}
+
+void release_sleep_pin_holds() {
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis((gpio_num_t)pins::MOTOR_ENABLE);
+  gpio_hold_dis((gpio_num_t)pins::MOTOR_PHASE);
+  gpio_hold_dis((gpio_num_t)pins::MOTOR_SLEEP);
+  gpio_hold_dis((gpio_num_t)pins::REGULATOR_EN);
+}
+
+void prepare_pins_for_deepsleep() {
+  // Ensure PWM peripheral no longer drives MOTOR_ENABLE before forcing LOW.
+  ledcWrite(PWM_CHANNEL, 0);
+  ledcDetachPin(pins::MOTOR_ENABLE);
+
+  pinMode(pins::MOTOR_ENABLE, OUTPUT);
+  pinMode(pins::MOTOR_PHASE, OUTPUT);
+  pinMode(pins::MOTOR_SLEEP, OUTPUT);
+  pinMode(pins::REGULATOR_EN, OUTPUT);
+
+  digitalWrite(pins::MOTOR_ENABLE, LOW);
+  digitalWrite(pins::MOTOR_PHASE, LOW);
+  digitalWrite(pins::MOTOR_SLEEP, LOW);
+  digitalWrite(pins::REGULATOR_EN, LOW);
+
+  gpio_hold_en((gpio_num_t)pins::MOTOR_ENABLE);
+  gpio_hold_en((gpio_num_t)pins::MOTOR_PHASE);
+  gpio_hold_en((gpio_num_t)pins::MOTOR_SLEEP);
+  gpio_hold_en((gpio_num_t)pins::REGULATOR_EN);
+  gpio_deep_sleep_hold_en();
 }
 
 // ── Loop (Core 1) ─────────────────────────────────────────────
@@ -269,7 +313,10 @@ void deepSleep_handling() {
   esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
 
   // button wake-up (GPIO LOW = pressed), for ESP32-C3
-  esp_deep_sleep_enable_gpio_wakeup(BIT(BUTTON_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_enable_gpio_wakeup(BIT(pins::BUTTON_WAKEUP_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);
+
+  // hard-disable motor/regulator pins and hold levels through deep sleep.
+  prepare_pins_for_deepsleep();
 
   Serial.println("Deep sleep with timer + button wake-up...");
   Serial.flush();

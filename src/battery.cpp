@@ -1,5 +1,6 @@
 #include "battery.h"
 #include "mqtt_topics.h"
+#include "pins.h"
 #include <Wire.h>
 #include <Adafruit_MAX1704X.h>
 #include <math.h>
@@ -29,10 +30,6 @@ float getBatteryChargeRate(); // charge/discharge rate in %/h
 static Adafruit_MAX17048 maxlipo;
 static bool batteryOk = false;
 
-// XIAO ESP32C3 I2C pins
-#define I2C_SDA 6
-#define I2C_SCL 7
-
 static const unsigned long BATTERY_PUBLISH_INTERVAL_MS = 2000;
 static const float BATTERY_VOLTAGE_DELTA = 0.02f;
 static const float BATTERY_PERCENT_DELTA = 0.5f;
@@ -48,7 +45,7 @@ static const uint8_t BATTERY_INVALID_READ_LIMIT = 3;
 static void recoverBatteryI2cBus() {
   Wire.end();
   delay(5);
-  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.begin(pins::I2C_SDA, pins::I2C_SCL);
   Wire.setClock(100000);  // 100 kHz is more robust on longer/noisier wiring
 }
 
@@ -72,7 +69,7 @@ static bool probeBatteryMonitor() {
  * @brief Initialize I2C bus and probe MAX17048 monitor.
  */
 void setup_battery() {
-  Wire.begin(I2C_SDA, I2C_SCL);  // XIAO ESP32C3: SDA=GPIO6, SCL=GPIO7
+  Wire.begin(pins::I2C_SDA, pins::I2C_SCL);  // XIAO ESP32C3 I2C pins
   Wire.setClock(100000);         // keep I2C conservative for stability
   delay(200);  // give I2C bus time to settle
 
