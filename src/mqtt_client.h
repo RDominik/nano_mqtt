@@ -11,21 +11,6 @@
  */
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 /**
- * @brief Read and clear the pending deep-sleep request flag.
- * @retval true A sleep request was pending.
- * @retval false No sleep request was pending.
- */
-bool get_sleepRequested();
-/**
- * @brief Get configured deep-sleep duration in milliseconds.
- * @return Sleep duration in milliseconds.
- */
-uint64_t get_sleepTimeMs();
-/**
- * @brief Reset configured deep-sleep duration to zero.
- */
-void reset_sleepTimeMs();
-/**
  * @brief Initialize MQTT synchronization primitives and shared state.
  */
 void setup_mqtt();

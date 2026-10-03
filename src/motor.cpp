@@ -131,6 +131,30 @@ static bool process_motor_timeout(uint8_t& state_button) {
 }
 
 /**
+ * @brief Stop motion when the active direction reaches its limit switch.
+ * @param[in,out] state_button Button state machine state.
+ * @retval true A limit switch stopped the motor.
+ * @retval false No active limit switch stopped the motor.
+ */
+static bool process_limit_switches(uint8_t& state_button) {
+  if (running_state == RUN_STATE_FORWARD && digitalRead(pins::OPEN_LIMIT) == LOW) {
+    Serial.println("Open limit reached -> motor standby");
+    state_button = 0;
+    motorStandby();
+    return true;
+  }
+
+  if (running_state == RUN_STATE_BACKWARD && digitalRead(pins::CLOSE_LIMIT) == LOW) {
+    Serial.println("Close limit reached -> motor standby");
+    state_button = 0;
+    motorStandby();
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * @brief Publish the current motor state to MQTT.
  * @param[in,out] mqtt MQTT controller used for state publishing.
  */
@@ -151,6 +175,24 @@ static void publish_motor_state(mqtt_controller& mqtt) {
     default:
       break;
   }
+}
+
+/**
+ * @brief Publish the current end-switch states to MQTT.
+ * @param[in,out] mqtt MQTT controller used for status publishing.
+ * @param[in] closeLimit Raw D2 input state.
+ * @param[in] openLimit Raw D3 input state.
+ * @retval true Both states were accepted by the MQTT client.
+ * @retval false At least one state could not be published.
+ */
+static bool publish_limit_states(mqtt_controller& mqtt, int closeLimit, int openLimit) {
+  bool closePublished = mqtt.publishSafe(
+      mqtt_topics::CLOSE_LIMIT_STATUS,
+      closeLimit == LOW ? "ACTIVE" : "released", true);
+  bool openPublished = mqtt.publishSafe(
+      mqtt_topics::OPEN_LIMIT_STATUS,
+      openLimit == LOW ? "ACTIVE" : "released", true);
+  return closePublished && openPublished;
 }
 
 /**
@@ -183,6 +225,12 @@ void setup_motor() {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorForward(int speed) {
+  if (digitalRead(pins::OPEN_LIMIT) == LOW) {
+    Serial.println("Open limit active -> motor remains in standby");
+    motorStandby();
+    return;
+  }
+
   digitalWrite(pins::MOTOR_SLEEP, HIGH);
   digitalWrite(pins::MOTOR_PHASE, HIGH);
   applyMotorPwm(speed);
@@ -196,6 +244,12 @@ void motorForward(int speed) {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorBackward(int speed) {
+  if (digitalRead(pins::CLOSE_LIMIT) == LOW) {
+    Serial.println("Close limit active -> motor remains in standby");
+    motorStandby();
+    return;
+  }
+
   digitalWrite(pins::MOTOR_SLEEP, HIGH);
   digitalWrite(pins::MOTOR_PHASE, LOW);
   applyMotorPwm(speed);
@@ -235,10 +289,22 @@ void run_motor(mqtt_controller& mqtt) {
   static uint8_t lastPublishedState = 0;
   static uint8_t state_button = 0U;
   static boolean button_flag = false;
+  static int lastCloseLimit = -1;
+  static int lastOpenLimit = -1;
   bool motorStateChanged = false;
+
+  int closeLimit = digitalRead(pins::CLOSE_LIMIT);
+  int openLimit = digitalRead(pins::OPEN_LIMIT);
+  if (closeLimit != lastCloseLimit || openLimit != lastOpenLimit) {
+    if (publish_limit_states(mqtt, closeLimit, openLimit)) {
+      lastCloseLimit = closeLimit;
+      lastOpenLimit = openLimit;
+    }
+  }
 
   motorStateChanged = process_mqtt_motor_command(state_button);
   motorStateChanged = process_button_motor_state(lastButtonPress, button_flag, state_button) || motorStateChanged;
+  motorStateChanged = process_limit_switches(state_button) || motorStateChanged;
   motorStateChanged = process_motor_timeout(state_button) || motorStateChanged;
 
   if (!motorStateChanged && running_state == lastPublishedState) {

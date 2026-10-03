@@ -6,6 +6,8 @@ namespace mqtt_topics {
 static constexpr const char* ENGINE = "nano/esp32/engine";
 static constexpr const char* ENGINE_SET = "nano/esp32/engine/set";
 static constexpr const char* ENGINE_STATUS = "nano/esp32/engine/status";
+static constexpr const char* CLOSE_LIMIT_STATUS = "nano/esp32/limit/close";
+static constexpr const char* OPEN_LIMIT_STATUS = "nano/esp32/limit/open";
 
 static constexpr const char* SLEEP_MS = "nano/esp32/sleepms";
 static constexpr const char* SLEEP_MS_STATUS = "nano/esp32/sleepms/status";

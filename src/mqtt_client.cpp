@@ -2,18 +2,13 @@
 #include "mqtt_client.h"
 #include "motor.h"
 #include "mqtt_topics.h"
+#include "sleep.h"
 
 /**
  * @file mqtt_client.cpp
  * @brief MQTT runtime, callback dispatch, and shared sleep-request state.
  */
 
-/**
- * @brief Store deep-sleep request state and optional sleep duration.
- * @param[in] requested True to request deep sleep, false to clear request.
- * @param[in] time_in_ms Sleep duration in milliseconds.
- */
-void set_sleepRequested(bool requested, uint64_t time_in_ms = 0UL);
 /**
  * @brief Dispatch one decoded MQTT message to local handlers.
  * @param[in] topic MQTT topic.
@@ -35,18 +30,12 @@ static void buildMqttClientId(char* out, size_t outSize) {
 }
 
 SemaphoreHandle_t mqttMutex = NULL;
-SemaphoreHandle_t valueMutex = NULL;
-
-RTC_DATA_ATTR uint64_t sleepTimeMs = 0;  // sleep time in milliseconds, retained across deep sleep
-volatile bool sleepRequested = false;    // flag to indicate sleep request
 
 /**
  * @brief Initialize mutexes used for MQTT operations and shared values.
  */
 void setup_mqtt() {
-  // Separate mutexes keep MQTT I/O and sleep flags independent.
   mqttMutex = xSemaphoreCreateMutex();
-  valueMutex = xSemaphoreCreateMutex();
 }
 
 // ── MQTT Reconnect (single attempt) ──────────────────────────
@@ -209,56 +198,5 @@ void message_control(char* topic, char * msg) {
     } else {
       request_motor_command(MOTOR_CMD_STOP);
     }
-  }
-}
-
-/**
- * @brief Update shared sleep-request values.
- * @param[in] requested New sleep-request flag.
- * @param[in] time_in_ms Sleep duration in milliseconds.
- */
-void set_sleepRequested(bool requested, uint64_t time_in_ms) {
-  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    sleepRequested = requested;
-    sleepTimeMs = time_in_ms;
-    xSemaphoreGive(valueMutex);
-  }
-}
-
-/**
- * @brief Read and clear sleep-request flag atomically.
- * @retval true Sleep was requested.
- * @retval false No sleep request pending.
- */
-bool get_sleepRequested() {
-  bool requested = false;
-  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    requested = sleepRequested;
-    sleepRequested = false;  // reset flag after reading
-    xSemaphoreGive(valueMutex);
-  }
-  return requested;
-}
-
-/**
- * @brief Read configured sleep time in milliseconds.
- * @return Sleep duration in milliseconds.
- */
-uint64_t get_sleepTimeMs() {
-  uint64_t time = 0;
-  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    time = sleepTimeMs;
-    xSemaphoreGive(valueMutex);
-  }
-  return time;
-}
-
-/**
- * @brief Reset configured sleep duration to zero.
- */
-void reset_sleepTimeMs() {
-  if (xSemaphoreTake(valueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    sleepTimeMs = 0;
-    xSemaphoreGive(valueMutex);
   }
 }

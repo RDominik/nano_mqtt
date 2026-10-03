@@ -2,12 +2,12 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include <esp_sleep.h>
 #include <esp_system.h>
 #include <driver/gpio.h>
 #include "secrets.h"  // ssid, password, mqtt_server, ota_password
 #include "motor.h"
 #include "mqtt_client.h"
+#include "sleep.h"
 #include "battery.h"
 #include "mqtt_topics.h"
 #include "pins.h"
@@ -30,10 +30,6 @@ RTC_DATA_ATTR uint32_t boot_counter = 0;
 TaskHandle_t mqttTaskHandle = NULL;
 
 // function prototypes
-/**
- * @brief Prepare and enter deep sleep mode.
- */
-void deepSleep_handling();
 /**
  * @brief Configure OTA handlers and start OTA service.
  */
@@ -60,10 +56,6 @@ void setup_pins();
  * @brief Release GPIO deep-sleep holds so pins can be reconfigured after wake.
  */
 void release_sleep_pin_holds();
-/**
- * @brief Drive motor/regulator control pins LOW and latch them for deep sleep.
- */
-void prepare_pins_for_deepsleep();
 /**
  * @brief Convert reset reason enum to readable text.
  * @param[in] reason Raw reset reason from ESP-IDF.
@@ -147,7 +139,8 @@ void setup_pins() {
 
   // button with internal pull-up, active LOW
   pinMode(pins::BUTTON, INPUT_PULLUP);
-  pinMode(pins::REED1, INPUT_PULLUP);
+  pinMode(pins::CLOSE_LIMIT, INPUT_PULLUP);
+  pinMode(pins::OPEN_LIMIT, INPUT_PULLUP);
   // initialize DRV8838 pins
   pinMode(pins::MOTOR_ENABLE, OUTPUT);
   pinMode(pins::MOTOR_PHASE, OUTPUT);
@@ -161,28 +154,6 @@ void release_sleep_pin_holds() {
   gpio_hold_dis((gpio_num_t)pins::MOTOR_PHASE);
   gpio_hold_dis((gpio_num_t)pins::MOTOR_SLEEP);
   gpio_hold_dis((gpio_num_t)pins::REGULATOR_EN);
-}
-
-void prepare_pins_for_deepsleep() {
-  // Ensure PWM peripheral no longer drives MOTOR_ENABLE before forcing LOW.
-  ledcWrite(PWM_CHANNEL, 0);
-  ledcDetachPin(pins::MOTOR_ENABLE);
-
-  pinMode(pins::MOTOR_ENABLE, OUTPUT);
-  pinMode(pins::MOTOR_PHASE, OUTPUT);
-  pinMode(pins::MOTOR_SLEEP, OUTPUT);
-  pinMode(pins::REGULATOR_EN, OUTPUT);
-
-  digitalWrite(pins::MOTOR_ENABLE, LOW);
-  digitalWrite(pins::MOTOR_PHASE, LOW);
-  digitalWrite(pins::MOTOR_SLEEP, LOW);
-  digitalWrite(pins::REGULATOR_EN, LOW);
-
-  gpio_hold_en((gpio_num_t)pins::MOTOR_ENABLE);
-  gpio_hold_en((gpio_num_t)pins::MOTOR_PHASE);
-  gpio_hold_en((gpio_num_t)pins::MOTOR_SLEEP);
-  gpio_hold_en((gpio_num_t)pins::REGULATOR_EN);
-  gpio_deep_sleep_hold_en();
 }
 
 // ── Loop (Core 1) ─────────────────────────────────────────────
@@ -213,7 +184,7 @@ void loop() {
 
   // execute deep sleep (in loop so MQTT callback returns cleanly)
   if (get_sleepRequested()) {
-    deepSleep_handling();
+    deepSleep_handling(mqtt, mqttTaskHandle);
   }
 
   // WiFi reconnect without blocking the loop.
@@ -277,52 +248,6 @@ void connectWiFi(bool force) {
   lastAttempt = now;
   Serial.print("Connecting WiFi...");
   WiFi.begin(ssid, password);
-}
-
-/**
- * @brief Stop runtime services and enter deep sleep with timer and button wake-up.
- */
-void deepSleep_handling() {
-
-  // stop motor before sleeping (avoid blocking sleep with running motor) --- IGNORE ---s
-  motorStop();
-  motorStandby();
-
-  // turn off LEDs
-  // digitalWrite(LED_BUILTIN, LOW);
-
-  // stop MQTT task before sleep publish to avoid reconnect races.
-  if (mqttTaskHandle != NULL) {
-    vTaskDelete(mqttTaskHandle);
-    mqttTaskHandle = NULL;
-    Serial.println("MQTT task stopped.");
-  }
-
-  // cleanly disconnect MQTT (publish + disconnect)
-  uint64_t sleepTimeMs = get_sleepTimeMs();
-  publish_batteryPercentNow(mqtt);
-  mqtt.sleep(mqtt_topics::STATUS, "sleeping", true);
-
-  // WiFi off
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  btStop();
-  Serial.flush();
-
-  // Timer Wake-Up API expects microseconds; stored value is milliseconds.
-  esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
-
-  // button wake-up (GPIO LOW = pressed), for ESP32-C3
-  esp_deep_sleep_enable_gpio_wakeup(BIT(pins::BUTTON_WAKEUP_GPIO), ESP_GPIO_WAKEUP_GPIO_LOW);
-
-  // hard-disable motor/regulator pins and hold levels through deep sleep.
-  prepare_pins_for_deepsleep();
-
-  Serial.println("Deep sleep with timer + button wake-up...");
-  Serial.flush();
-
-  esp_deep_sleep_start();
-  // ← never reached, ESP32 restarts after sleep
 }
 
 /**

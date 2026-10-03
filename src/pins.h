@@ -15,8 +15,8 @@ static constexpr int REGULATOR_EN = D10;  // HIGH = enabled, LOW = disabled
 
 // Input pins
 static constexpr int BUTTON = D1;         // button (active LOW)
-static constexpr int REED1 = D2;          // reed switch 1 (active LOW)
-static constexpr int REED2 = D3;          // reed switch 2 (active LOW)
+static constexpr int CLOSE_LIMIT = D2;    // closed-position limit switch (active LOW)
+static constexpr int OPEN_LIMIT = D3;     // open-position limit switch (active LOW)
 
 // Deep-sleep wakeup source (raw GPIO number for bit mask API)
 static constexpr int BUTTON_WAKEUP_GPIO = BUTTON;
