@@ -61,15 +61,17 @@ void mqtt_controller::mqttReconnect() {
     Serial.printf("MQTT Client ID: %s\n", mqttClientId);
     String ip = WiFi.localIP().toString();
     bool sub1 = this->subscribe(mqtt_topics::ENGINE);
-    bool sub2 = this->subscribe(mqtt_topics::SLEEP_MS);
+    bool sub2 = this->subscribe(mqtt_topics::ENGINE_MAX_RUNTIME);
+    bool sub3 = this->subscribe(mqtt_topics::SLEEP_MS);
     this->publish(mqtt_topics::IP, ip.c_str());
     this->publish(mqtt_topics::STATUS, "online!", true);
-    this->publish(mqtt_topics::ENGINE_STATUS, (sub1 ? "OK" : "FAIL"));
-    this->publish(mqtt_topics::SLEEP_MS_STATUS, (sub2 ? "OK" : "FAIL"));
+    this->publish(mqtt_topics::ENGINE_STATUS, (sub1 && sub2 ? "OK" : "FAIL"));
+    this->publish(mqtt_topics::SLEEP_MS_STATUS, (sub3 ? "OK" : "FAIL"));
     Serial.printf("Publish %s: %s\n", mqtt_topics::IP, ip.c_str());
     Serial.printf("Publish %s: %s\n", mqtt_topics::STATUS, "online!");
     Serial.printf("Subscribe %s: %s\n", mqtt_topics::ENGINE, sub1 ? "OK" : "FAIL");
-    Serial.printf("Subscribe %s: %s\n", mqtt_topics::SLEEP_MS, sub2 ? "OK" : "FAIL");
+    Serial.printf("Subscribe %s: %s\n", mqtt_topics::ENGINE_MAX_RUNTIME, sub2 ? "OK" : "FAIL");
+    Serial.printf("Subscribe %s: %s\n", mqtt_topics::SLEEP_MS, sub3 ? "OK" : "FAIL");
   } else {
     Serial.print("failed, RC=");
     Serial.println(this->state());
@@ -174,6 +176,22 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
  * @param[in] msg Zero-terminated payload content.
  */
 void message_control(char* topic, char * msg) {
+  if (strcmp(topic, mqtt_topics::ENGINE_MAX_RUNTIME) == 0) {
+    if (strcmp(msg, "null") == 0 || msg[0] == '\0') {
+      set_motor_max_runtime_seconds(0U);
+      return;
+    }
+
+    char* end = nullptr;
+    unsigned long seconds = strtoul(msg, &end, 10);
+    if (end == msg || *end != '\0' || seconds == 0UL || seconds > UINT32_MAX) {
+      set_motor_max_runtime_seconds(0U);
+    } else {
+      set_motor_max_runtime_seconds((uint32_t)seconds);
+    }
+    return;
+  }
+
   // ── Deep Sleep via MQTT ──
   if (strcmp(topic, mqtt_topics::SLEEP_MS) == 0) {
     // Convert decimal payload text (milliseconds) to long integer; parsing stops at first non-digit.

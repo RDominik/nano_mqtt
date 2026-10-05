@@ -13,9 +13,11 @@
 #define RUN_STATE_STOP 3
 #define RUN_STATE_STANDBY 4
 
-static constexpr unsigned long MOTOR_HARD_OFF_TIMEOUT_MS = 30000UL;
+static constexpr uint32_t DEFAULT_MOTOR_MAX_RUNTIME_SECONDS = 60U;
 
 int motorSpeed = 250;
+static volatile uint32_t motor_max_runtime_seconds = DEFAULT_MOTOR_MAX_RUNTIME_SECONDS;
+static portMUX_TYPE motorRuntimeMux = portMUX_INITIALIZER_UNLOCKED;
 
 /**
  * @brief Apply PWM duty cycle with 8-bit safety clamping.
@@ -118,9 +120,15 @@ static bool process_button_motor_state(unsigned long& lastButtonPress, boolean& 
  * @retval false The timeout was not reached.
  */
 static bool process_motor_timeout(uint8_t& state_button) {
+  uint32_t maxRuntimeSeconds;
+  portENTER_CRITICAL(&motorRuntimeMux);
+  maxRuntimeSeconds = motor_max_runtime_seconds;
+  portEXIT_CRITICAL(&motorRuntimeMux);
+
   if ((running_state == RUN_STATE_FORWARD || running_state == RUN_STATE_BACKWARD) &&
       (motor_run_started_ms != 0) &&
-      (millis() - motor_run_started_ms >= MOTOR_HARD_OFF_TIMEOUT_MS)) {
+      ((uint64_t)(millis() - motor_run_started_ms) >=
+       ((uint64_t)maxRuntimeSeconds * 1000ULL))) {
     Serial.println("Motor timeout reached -> hard off");
     state_button = 0;
     motorStandby();
@@ -128,6 +136,13 @@ static bool process_motor_timeout(uint8_t& state_button) {
   }
 
   return false;
+}
+
+void set_motor_max_runtime_seconds(uint32_t seconds) {
+  portENTER_CRITICAL(&motorRuntimeMux);
+  motor_max_runtime_seconds = seconds == 0U ? DEFAULT_MOTOR_MAX_RUNTIME_SECONDS : seconds;
+  portEXIT_CRITICAL(&motorRuntimeMux);
+  Serial.printf("Motor max runtime: %lu s\n", (unsigned long)motor_max_runtime_seconds);
 }
 
 /**

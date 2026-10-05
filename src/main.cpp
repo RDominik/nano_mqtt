@@ -138,9 +138,10 @@ void setup_pins() {
   digitalWrite(pins::REGULATOR_EN, HIGH);
 
   // button with internal pull-up, active LOW
-  pinMode(pins::BUTTON, INPUT_PULLUP);
-  pinMode(pins::CLOSE_LIMIT, INPUT_PULLUP);
-  pinMode(pins::OPEN_LIMIT, INPUT_PULLUP);
+  pinMode(pins::BUTTON, INPUT);
+  // End switches use external pull-ups to 3.3 V, active LOW.
+  pinMode(pins::CLOSE_LIMIT, INPUT);
+  pinMode(pins::OPEN_LIMIT, INPUT);
   // initialize DRV8838 pins
   pinMode(pins::MOTOR_ENABLE, OUTPUT);
   pinMode(pins::MOTOR_PHASE, OUTPUT);

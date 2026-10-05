@@ -4,6 +4,7 @@
 namespace mqtt_topics {
 
 static constexpr const char* ENGINE = "nano/esp32/engine";
+static constexpr const char* ENGINE_MAX_RUNTIME = "nano/esp32/engineMaxRuntime";
 static constexpr const char* ENGINE_SET = "nano/esp32/engine/set";
 static constexpr const char* ENGINE_STATUS = "nano/esp32/engine/status";
 static constexpr const char* CLOSE_LIMIT_STATUS = "nano/esp32/limit/close";

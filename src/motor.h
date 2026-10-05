@@ -27,6 +27,12 @@ const int PWM_RES      = 8;     // 8 Bit → 0-255
 extern int motorSpeed;
 
 /**
+ * @brief Set the maximum motor runtime.
+ * @param[in] seconds Maximum runtime in seconds; zero restores the default.
+ */
+void set_motor_max_runtime_seconds(uint32_t seconds);
+
+/**
  * @brief Initialize the DRV8838 driver and PWM output.
  * @details
  * Configures LEDC PWM on ENABLE and sets the driver to sleep as a safe default.
