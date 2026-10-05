@@ -55,8 +55,8 @@ Communicate in German unless the user requests another language.
 Current assignments in `src/pins.h`:
 
 - `D1`: local button, active LOW, `INPUT_PULLUP`.
-- `D2`: close-position end switch, named `CLOSE_LIMIT`, active LOW, `INPUT_PULLUP`.
-- `D3`: open-position end switch, named `OPEN_LIMIT`, active LOW, `INPUT_PULLUP`.
+- `D2`: close-position end switch, named `CLOSE_LIMIT`, active LOW, `INPUT` with external pull-up to 3.3 V.
+- `D3`: open-position end switch, named `OPEN_LIMIT`, active LOW, `INPUT` with external pull-up to 3.3 V.
 - `D4`: I2C SDA.
 - `D5`: I2C SCL.
 - `D7`: DRV8838 SLEEP, HIGH = active/awake.
@@ -70,7 +70,7 @@ End switches are reed contacts used as normally-open, potential-free contacts wh
 - `COM` to GND.
 - `NO` to the ESP32 input.
 - `NC` unused.
-- With `INPUT_PULLUP`: open contact should measure approximately 3.3 V / `HIGH`; closed contact to GND should measure approximately 0 V / `LOW`.
+- With the external pull-up: open contact should measure approximately 3.3 V / `HIGH`; closed contact to GND should measure approximately 0 V / `LOW`.
 - A measured 1.5 V or 24 kOhm in the supposedly open state is not a valid open input and must be diagnosed electrically. Test the reed contact isolated from the circuit.
 - If a switch is disconnected and the input returns to `released`, the ESP32 input and pull-up are likely functional; the remaining fault is in the switch, cable, connector, or contact selection.
 
@@ -85,7 +85,7 @@ End switches are reed contacts used as normally-open, potential-free contacts wh
 - `motorForward()` maps to opening and checks `OPEN_LIMIT` before starting.
 - `motorBackward()` maps to closing and checks `CLOSE_LIMIT` before starting.
 - While running, the matching end switch calls `motorStandby()`.
-- Firmware also has a 30-second motor hard-off timeout.
+- Firmware has a configurable motor hard-off timeout. It defaults to 60 seconds and is updated through `nano/esp32/engineMaxRuntime`.
 - A multimeter reading around 2 V on one motor output relative to GND can be a PWM/H-bridge average and is not proof of low motor supply. Measure across `OUT1` and `OUT2`, and measure `VM` during startup/load.
 - A stable 5 V at the DRV8838 supply makes a battery supply collapse less likely, but does not by itself prove motor current is adequate.
 - A non-polarized 47-100 nF ceramic capacitor may be placed across the motor terminals for brush noise suppression. Do not place a polarized electrolytic across reversing motor terminals. Bulk capacitance belongs across motor supply and GND near the driver.
@@ -106,6 +106,7 @@ End switches are reed contacts used as normally-open, potential-free contacts wh
 
 - MQTT broker configuration is in `src/mqtt_client.h/.cpp`; do not infer it from stale documentation.
 - Incoming motor command topic: `nano/esp32/engine`; payloads `open`, `close`, `standby`, or other -> stop.
+- Incoming motor maximum-runtime topic: `nano/esp32/engineMaxRuntime`; payload is seconds. Missing topic, `null`, empty, zero, or invalid values use the 60-second default.
 - Incoming sleep command topic: `nano/esp32/sleepms`; positive integer milliseconds.
 - Motor transition state topic: `nano/esp32/engine/set`.
 - End-switch status topics are retained:
