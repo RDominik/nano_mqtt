@@ -87,6 +87,7 @@ void reset_sleepTimeMs() {
 
 void deepSleep_handling(mqtt_controller& mqtt, TaskHandle_t& mqttTaskHandle) {
   motorStandby();
+  mqtt.publishSafe(mqtt_topics::ENGINE_SET, "standby");
   prepare_pins_for_deepsleep();
 
   delay(MQTT_STATUS_SETTLE_DELAY_MS);
