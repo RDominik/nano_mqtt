@@ -19,6 +19,37 @@ int motorSpeed = 250;
 static volatile uint32_t motor_max_runtime_seconds = DEFAULT_MOTOR_MAX_RUNTIME_SECONDS;
 static portMUX_TYPE motorRuntimeMux = portMUX_INITIALIZER_UNLOCKED;
 
+static constexpr unsigned long LIMIT_DEBOUNCE_MS = 30UL;
+static int stable_close_limit = HIGH;
+static int stable_open_limit = HIGH;
+static int last_close_limit_reading = HIGH;
+static int last_open_limit_reading = HIGH;
+static unsigned long close_limit_changed_ms = 0;
+static unsigned long open_limit_changed_ms = 0;
+
+/**
+ * @brief Update the debounced end-switch states from the raw GPIO inputs.
+ */
+static void update_limit_switches() {
+  unsigned long now = millis();
+  int closeReading = digitalRead(pins::CLOSE_LIMIT);
+  int openReading = digitalRead(pins::OPEN_LIMIT);
+
+  if (closeReading != last_close_limit_reading) {
+    last_close_limit_reading = closeReading;
+    close_limit_changed_ms = now;
+  } else if ((now - close_limit_changed_ms) >= LIMIT_DEBOUNCE_MS) {
+    stable_close_limit = closeReading;
+  }
+
+  if (openReading != last_open_limit_reading) {
+    last_open_limit_reading = openReading;
+    open_limit_changed_ms = now;
+  } else if ((now - open_limit_changed_ms) >= LIMIT_DEBOUNCE_MS) {
+    stable_open_limit = openReading;
+  }
+}
+
 /**
  * @brief Apply PWM duty cycle with 8-bit safety clamping.
  * @param[in] speed Requested duty cycle.
@@ -152,14 +183,14 @@ void set_motor_max_runtime_seconds(uint32_t seconds) {
  * @retval false No active limit switch stopped the motor.
  */
 static bool process_limit_switches(uint8_t& state_button) {
-  if (running_state == RUN_STATE_FORWARD && digitalRead(pins::OPEN_LIMIT) == LOW) {
+  if (running_state == RUN_STATE_FORWARD && stable_open_limit == LOW) {
     Serial.println("Open limit reached -> motor standby");
     state_button = 0;
     motorStandby();
     return true;
   }
 
-  if (running_state == RUN_STATE_BACKWARD && digitalRead(pins::CLOSE_LIMIT) == LOW) {
+  if (running_state == RUN_STATE_BACKWARD && stable_close_limit == LOW) {
     Serial.println("Close limit reached -> motor standby");
     state_button = 0;
     motorStandby();
@@ -173,22 +204,18 @@ static bool process_limit_switches(uint8_t& state_button) {
  * @brief Publish the current motor state to MQTT.
  * @param[in,out] mqtt MQTT controller used for state publishing.
  */
-static void publish_motor_state(mqtt_controller& mqtt) {
+static bool publish_motor_state(mqtt_controller& mqtt) {
   switch (running_state) {
     case RUN_STATE_FORWARD:
-      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "open");
-      break;
+      return mqtt.publishSafe(mqtt_topics::ENGINE_SET, "open");
     case RUN_STATE_BACKWARD:
-      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "close");
-      break;
+      return mqtt.publishSafe(mqtt_topics::ENGINE_SET, "close");
     case RUN_STATE_STOP:
-      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "stop");
-      break;
+      return mqtt.publishSafe(mqtt_topics::ENGINE_SET, "stop");
     case RUN_STATE_STANDBY:
-      mqtt.publishSafe(mqtt_topics::ENGINE_SET, "standby");
-      break;
+      return mqtt.publishSafe(mqtt_topics::ENGINE_SET, "standby");
     default:
-      break;
+      return false;
   }
 }
 
@@ -240,7 +267,7 @@ void setup_motor() {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorForward(int speed) {
-  if (digitalRead(pins::OPEN_LIMIT) == LOW) {
+  if (stable_open_limit == LOW) {
     Serial.println("Open limit active -> motor remains in standby");
     motorStandby();
     return;
@@ -259,7 +286,7 @@ void motorForward(int speed) {
  * @param[in] speed PWM duty cycle in range 0..255.
  */
 void motorBackward(int speed) {
-  if (digitalRead(pins::CLOSE_LIMIT) == LOW) {
+  if (stable_close_limit == LOW) {
     Serial.println("Close limit active -> motor remains in standby");
     motorStandby();
     return;
@@ -308,8 +335,9 @@ void run_motor(mqtt_controller& mqtt) {
   static int lastOpenLimit = -1;
   bool motorStateChanged = false;
 
-  int closeLimit = digitalRead(pins::CLOSE_LIMIT);
-  int openLimit = digitalRead(pins::OPEN_LIMIT);
+  update_limit_switches();
+  int closeLimit = stable_close_limit;
+  int openLimit = stable_open_limit;
   if (closeLimit != lastCloseLimit || openLimit != lastOpenLimit) {
     if (publish_limit_states(mqtt, closeLimit, openLimit)) {
       lastCloseLimit = closeLimit;
@@ -326,6 +354,7 @@ void run_motor(mqtt_controller& mqtt) {
     return;
   }
 
-  publish_motor_state(mqtt);
-  lastPublishedState = running_state;
+  if (publish_motor_state(mqtt)) {
+    lastPublishedState = running_state;
+  }
 }
